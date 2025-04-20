@@ -17,7 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-  "meds==0.3.3", "es-aces", "hydra-core", "MEDS-transforms~=0.4.2"
+  "meds==0.3.3", "es-aces~=0.6.2", "hydra-core", "MEDS-transforms~=0.4.3"
 ]
 
 [tool.setuptools_scm]
