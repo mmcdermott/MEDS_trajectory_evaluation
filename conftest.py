@@ -10,9 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
-from omegaconf import DictConfig
-
 from MEDS_transforms.utils import print_directory_contents
+from omegaconf import DictConfig
 
 
 @contextmanager

@@ -1,9 +1,9 @@
-from pathlib import Path
 from hashlib import sha256
+from pathlib import Path
+
 
 def get_in_out_fps(trajectories_dir: Path, output_dir: Path):
-    """
-    Get the input and output file paths for the trajectories.
+    """Get the input and output file paths for the trajectories.
 
     Args:
         trajectories_dir: Directory containing the input trajectory files.
@@ -12,7 +12,8 @@ def get_in_out_fps(trajectories_dir: Path, output_dir: Path):
     Returns:
         A list of tuples containing the input and output file paths.
     """
-    return = [output_dir / fp.relative_to(trajectories_dir) for fp in trajectories_dir.rglob("*.parquet")]
+    return [output_dir / fp.relative_to(trajectories_dir) for fp in trajectories_dir.rglob("*.parquet")]
+
 
 def hash_based_seed(seed: int | None, worker: int | None) -> int:
     """Generates a hash-based seed for reproducibility.

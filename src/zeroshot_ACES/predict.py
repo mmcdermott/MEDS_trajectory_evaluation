@@ -1,5 +1,6 @@
 import polars as pl
 
+
 def predict_for_trajectories(
     trajectories: pl.DataFrame,
     zero_shot_task_cfg,

@@ -1,28 +1,26 @@
 import logging
-import shutil
-from datetime import UTC, datetime
+import random
+from functools import partial
 from importlib.resources import files
 from pathlib import Path
 
 import hydra
-from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+import polars as pl
 from MEDS_transforms.mapreduce.mapper import map_over
-from functools import partial
+from omegaconf import DictConfig
 
+from .predict import predict_for_trajectories
 from .task_config import resolve_zero_shot_task_cfg
 from .utils import get_in_out_fps, hash_based_seed
-from .predict import predict_for_trajectories
-import random
 
 logger = logging.getLogger(__name__)
 
 CONFIGS = files("zeroshot_ACES") / "configs"
 
+
 @hydra.main(version_base=None, config_path=str(CONFIGS), config_name="_predict")
 def predict(cfg: DictConfig):
-
-    # 1. Validate and prepare the config for the zero-shot ocntext
+    # 1. Validate and prepare the config for the zero-shot context
     zero_shot_task_cfg = resolve_zero_shot_task_cfg(cfg.task, cfg.labeler)
 
     # 2. Iterate through the trajectory files and process each one
@@ -33,7 +31,7 @@ def predict(cfg: DictConfig):
 
     map_over(
         in_out_fps,
-        partial(predict_for_trajectories, zero_shot_task_cfg=zero_shot_task_cfg)
-        read_fn=partial(pl.read_parquet, use_pyarrow=True, glob=False)
+        partial(predict_for_trajectories, zero_shot_task_cfg=zero_shot_task_cfg),
+        read_fn=partial(pl.read_parquet, use_pyarrow=True, glob=False),
         write_fn=partial(pl.DataFrame.write_parquet, use_pyarrow=True),
     )

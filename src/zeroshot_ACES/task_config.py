@@ -1,10 +1,11 @@
 from pathlib import Path
 
 from aces.config import TaskExtractorConfig
+from omegaconf import DictConfig
+
 
 def load_task_cfg(criteria_fp: Path, predicates_fp: Path | None = None) -> TaskExtractorConfig:
-    """
-    Load the input ACES task configuration from the specified file paths.
+    """Load the input ACES task configuration from the specified file paths.
 
     Args:
         criteria_fp: Path to the original task configuration file. This file is used for specifying the
@@ -21,6 +22,7 @@ def load_task_cfg(criteria_fp: Path, predicates_fp: Path | None = None) -> TaskE
     """
     raise NotImplementedError("This is a placeholder for the actual loading code.")
 
+
 def validate_task_cfg(task_cfg: TaskExtractorConfig):
     """Validates that the given task configuration is usable in the zero-shot labeling context.
 
@@ -35,6 +37,7 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
         ValueError: If the task configuration is not valid for zero-shot labeling.
     """
     raise NotImplementedError("This is a placeholder for the actual validation code.")
+
 
 def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig):
     """Converts the task configuration to a zero-shot format by removing past and future criteria.
