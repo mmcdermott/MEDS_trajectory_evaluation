@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+
+# Input
+trajectories_dir: ???
+
+# Output
+output_dir: ???
+
+# Task
+task:
+  criteria_fp: ???
+  predicates_fp: null
+
+# Labels
+labeler:
+  drop_future_constraints: true
+
+# Pipeline
+worker: 0
+seed: 1
+
+# Hydra
+log_dir: ${output_dir}/.logs
+
+hydra:
+  run:
+    dir: "${log_dir}"
