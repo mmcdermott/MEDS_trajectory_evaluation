@@ -30,9 +30,13 @@ def hash_based_seed(seed: int | None, worker: int | None) -> int:
 
     Examples:
         >>> hash_based_seed(42, 0)
+        2658406739
         >>> hash_based_seed(None, 1)
+        1318793722
         >>> hash_based_seed(1, None)
+        2643917841
         >>> hash_based_seed(None, None)
+        3685662983
     """
 
     hash_str = f"{seed}_{worker}"
