@@ -41,6 +41,31 @@ def _resolve_node(task_cfg: TaskExtractorConfig, window_name: str) -> WindowNode
 
     Raises:
         ValueError: If the window name is not found in the task configuration.
+
+    Examples:
+        >>> from bigtree import print_tree
+        >>> print_tree(sample_ACES_cfg.window_tree)
+        trigger
+        ├── input.end
+        │   └── input.start
+        └── gap.end
+            └── target.end
+
+    On this tree, the windows depend on the following nodes:
+
+        >>> _resolve_node(sample_ACES_cfg, "gap")
+        WindowNode(name='trigger', root=None)
+        >>> _resolve_node(sample_ACES_cfg, "input")
+        WindowNode(name='input', root='end')
+        >>> _resolve_node(sample_ACES_cfg, "target")
+        WindowNode(name='gap', root='end')
+
+    If we pass a non-existent window name, it raises a ValueError:
+
+        >>> _resolve_node(sample_ACES_cfg, "nonexistent")
+        Traceback (most recent call last):
+            ...
+        ValueError: Window 'nonexistent' not found in task configuration.
     """
     if window_name not in task_cfg.windows:
         raise ValueError(f"Window '{window_name}' not found in task configuration.")
