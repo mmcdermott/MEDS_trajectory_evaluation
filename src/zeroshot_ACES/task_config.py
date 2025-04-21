@@ -25,6 +25,20 @@ def _ACES_config_timeline(task_cfg: TaskExtractorConfig) -> dict[WindowNode, set
 
     Returns:
         A mapping of window nodes to a set of all nodes that guaranteeably occur before them in time.
+
+    Examples:
+        >>> from bigtree import print_tree
+        >>> print_tree(sample_ACES_cfg.window_tree)
+        trigger
+        ├── input.end
+        │   └── input.start
+        └── gap.end
+            └── target.end
+
+    The tree does not uniquely determine the timeline, but for this example, we have the following temporal
+    relationships:
+
+        >>> _ACES_config_timeline(sample_ACES_cfg)
     """
     raise NotImplementedError("This is a placeholder for the actual implementation.")
 
