@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
+from aces.config import TaskExtractorConfig
 from MEDS_transforms.utils import print_directory_contents
 from omegaconf import DictConfig, OmegaConf
 
@@ -90,6 +91,12 @@ def sample_predicates_fp(sample_predicates_cfg: DictConfig, tmp_path: Path) -> P
     return predicates_fp
 
 
+@pytest.fixture
+def sample_ACES_cfg(sample_task_criteria_fp: Path, sample_predicates_fp: Path) -> TaskExtractorConfig:
+    """A sample ACES configuration."""
+    return TaskExtractorConfig.load(sample_task_criteria_fp, sample_predicates_fp)
+
+
 @contextmanager
 def print_warnings(caplog: pytest.LogCaptureFixture):
     """Captures all logged warnings within this context block and prints them upon exit.
@@ -114,9 +121,11 @@ def _setup_doctest_namespace(
     sample_predicates_cfg: DictConfig,
     sample_task_criteria_fp: Path,
     sample_predicates_fp: Path,
+    sample_ACES_cfg: TaskExtractorConfig,
 ) -> None:
     doctest_namespace.update(
         {
+            "sample_ACES_cfg": sample_ACES_cfg,
             "Path": Path,
             "sample_task_criteria_cfg": sample_task_criteria_cfg,
             "sample_predicates_cfg": sample_predicates_cfg,
