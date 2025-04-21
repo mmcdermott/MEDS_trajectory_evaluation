@@ -10,7 +10,21 @@ def get_in_out_fps(trajectories_dir: Path, output_dir: Path):
         output_dir: Directory where the output files will be saved.
 
     Returns:
-        A list of tuples containing the input and output file paths.
+        A list of tuples containing the input and output file paths. Output filepaths are simply the input
+            file paths relative to the trajectories directory nested within the output directory.
+
+    Examples:
+        >>> with tempfile.TemporaryDirectory() as tempdir:
+        ...     trajectories_dir = Path(tempdir) / "trajectories"
+        ...     output_dir = Path(tempdir) / "output"
+        ...     fp_1 = trajectories_dir / "file1.parquet"
+        ...     fp_2 = trajectories_dir / "nested" / "file2.parquet"
+        ...     fp_2.parent.mkdir(parents=True, exist_ok=True)
+        ...     fp_1.touch()
+        ...     fp_2.touch()
+        ...     in_out_fps = get_in_out_fps(trajectories_dir, output_dir)
+        ...     print([fp.relative_to(output_dir).as_posix() for fp in in_out_fps])
+        ['file1.parquet', 'nested/file2.parquet']
     """
     return [output_dir / fp.relative_to(trajectories_dir) for fp in trajectories_dir.rglob("*.parquet")]
 

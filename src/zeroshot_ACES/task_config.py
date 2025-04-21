@@ -1,26 +1,5 @@
-from pathlib import Path
-
 from aces.config import TaskExtractorConfig
 from omegaconf import DictConfig
-
-
-def load_task_cfg(criteria_fp: Path, predicates_fp: Path | None = None) -> TaskExtractorConfig:
-    """Load the input ACES task configuration from the specified file paths.
-
-    Args:
-        criteria_fp: Path to the original task configuration file. This file is used for specifying the
-            task inclusion and exclusion criteria; predicates can be included or can be loaded from a separate
-            file.
-        predicates_fp: Path to the predicates file. If None, only the predicates in the constraints file are
-            used.
-
-    Returns:
-        The loaded task configuration object, as an ACES TaskExtractorConfig instance.
-
-    Raises:
-        FileNotFoundError: If the specified file paths do not exist.
-    """
-    raise NotImplementedError("This is a placeholder for the actual loading code.")
 
 
 def validate_task_cfg(task_cfg: TaskExtractorConfig):
@@ -68,9 +47,16 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
     Raises:
         FileNotFoundError: If the specified file paths do not exist.
         ValueError: If the task configuration is invalid or cannot be resolved.
+
+    Examples:
+        >>> task_cfg = DictConfig({
+        ...     "criteria_fp": str(sample_task_criteria_fp), "predicates_fp": str(sample_predicates_fp)
+        ... })
+        >>> labeler_cfg = DictConfig({})
+        >>> resolve_zero_shot_task_cfg(task_cfg, labeler_cfg)
     """
 
-    orig_cfg = load_task_cfg(Path(task_cfg.criteria_fp), task_cfg.predicates_fp)
+    orig_cfg = TaskExtractorConfig.load(task_cfg.criteria_fp, task_cfg.predicates_fp)
 
     validate_task_cfg(orig_cfg)
 
