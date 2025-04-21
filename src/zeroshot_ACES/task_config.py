@@ -187,6 +187,7 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
         ...     "criteria_fp": str(sample_task_criteria_fp), "predicates_fp": str(sample_predicates_fp)
         ... })
         >>> labeler_cfg = DictConfig({})
+        >>> resolve_zero_shot_task_cfg(task_cfg, labeler_cfg)
     """
 
     orig_cfg = TaskExtractorConfig.load(task_cfg.criteria_fp, task_cfg.predicates_fp)
