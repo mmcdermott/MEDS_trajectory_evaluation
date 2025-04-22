@@ -1,8 +1,10 @@
 import itertools
+from collections import defaultdict
+from datetime import timedelta
 from typing import Literal, NamedTuple
 
 from aces.config import TaskExtractorConfig, WindowConfig
-from bigtree import print_tree
+from aces.utils import parse_timedelta
 from omegaconf import DictConfig
 
 WINDOW_NODE = tuple[str, Literal["start", "end"]] | tuple[Literal["trigger"], None]
@@ -137,8 +139,302 @@ def _node_in_tree(windows: dict[str, WindowConfig], window: WindowNode) -> bool:
         return windows[window.name].end_endpoint_expr is not None
 
 
+def _singleton_to_ancestral_relationships(singleton_relationships: dict) -> dict:
+    """Aggregates tree relationships at the direct child level to the all ancestors level.
+
+    Assumes that the tree relationships are either a boolean property (indicated with a dictionary mapping
+    nodes to sets, where presence in the set indicates True) or a summable property (indicated with a
+    dictionary mapping nodes to dictionaries mapping nodes to a summable type).
+
+    Args:
+        tree_relationships: A dictionary mapping nodes to their direct child relationships.
+
+    Returns:
+        The tree relationships aggregated to the all ancestors level.
+
+    Examples:
+        >>> singleton_relationships = {
+        ...     "A": {"B", "C"},
+        ...     "B": {"D", "E"},
+        ...     "C": {"F"},
+        ...     "D": {"G"},
+        ...     "E": {},
+        ...     "F": {},
+        ...     "G": {},
+        ... }
+        >>> relationships = _singleton_to_ancestral_relationships(singleton_relationships)
+        >>> for k, v in relationships.items():
+        ...     print(f"{k}: {sorted(v)}")
+        A: ['B', 'C', 'D', 'E', 'F', 'G']
+        B: ['D', 'E', 'G']
+        C: ['F']
+        D: ['G']
+        E: []
+        F: []
+        G: []
+        >>> singleton_relationships = {
+        ...     "A": {"B": 1, "C": 2},
+        ...     "B": {"D": 3, "E": 1},
+        ...     "C": {"F": 10},
+        ...     "D": {"G": 1},
+        ...     "F": {},
+        ...     "G": {},
+        ...     "R": {"S": 1},
+        ... }
+        >>> relationships = _singleton_to_ancestral_relationships(singleton_relationships)
+        >>> for k, v in relationships.items():
+        ...     print(f"{k}: {v}")
+        A: {'C': 2, 'F': 12, 'B': 1, 'E': 2, 'D': 4, 'G': 5}
+        B: {'E': 1, 'D': 3, 'G': 4}
+        C: {'F': 10}
+        D: {'G': 1}
+        R: {'S': 1}
+        F: {}
+        G: {}
+        >>> singleton_relationships = {
+        ...     "A": {"B": timedelta(days=1), "C": timedelta(days=2)},
+        ...     "B": {"D": timedelta(hours=3), "E": timedelta(minutes=1)},
+        ... }
+        >>> relationships = _singleton_to_ancestral_relationships(singleton_relationships)
+        >>> for k, v in relationships.items():
+        ...     print(f"{k}: {v}")
+        A: {'C': datetime.timedelta(days=2),
+            'B': datetime.timedelta(days=1),
+            'E': datetime.timedelta(days=1, seconds=60),
+            'D': datetime.timedelta(days=1, seconds=10800)}
+        B: {'E': datetime.timedelta(seconds=60),
+            'D': datetime.timedelta(seconds=10800)}
+    """
+
+    if not singleton_relationships:
+        return {}
+
+    val_type = type(next(iter(singleton_relationships.values())))
+
+    total = defaultdict(val_type)
+
+    for res_node, children_relationships in singleton_relationships.items():
+        to_parse = list(children_relationships)
+        to_parse_meta = {**children_relationships} if val_type is dict else {}
+        parsed = set()
+
+        while to_parse:
+            current = to_parse.pop()
+
+            if val_type is dict:
+                current_val = to_parse_meta.get(current, 0)
+
+            if current in parsed:
+                continue
+
+            if val_type is set:
+                total[res_node].add(current)
+            elif val_type is dict:
+                total[res_node][current] = current_val
+
+            for child in singleton_relationships.get(current, val_type()):
+                if child not in parsed:
+                    to_parse.append(child)
+                    if val_type is dict:
+                        to_parse_meta[child] = current_val + singleton_relationships[current][child]
+
+            parsed.add(current)
+
+    for node in singleton_relationships:
+        if node not in total:
+            if val_type is set:
+                total[node] = set()
+            elif val_type is dict:
+                total[node] = {}
+
+    return dict(total)
+
+
+def _get_direct_temporal_offsets(
+    task_cfg: TaskExtractorConfig,
+) -> dict[WindowNode, dict[WindowNode, timedelta]]:
+    """Returns a mapping of the direct time deltas between parent-child nodes in the task configuration.
+
+    Args:
+        task_cfg: The task configuration to analyze.
+
+    Returns:
+        A mapping of all direct, parent-child timedelta offset relationships between nodes in the task
+        configuration.
+
+    Examples:
+        >>> from aces.config import PlainPredicateConfig, EventConfig
+        >>> predicates = {
+        ...     "icu_admission": PlainPredicateConfig("ICU_ADMISSION"),
+        ...     "discharge_or_death": PlainPredicateConfig("DISCHARGE_OR_DEATH"),
+        ... }
+        >>> trigger = EventConfig("icu_admission")
+        >>> windows = {
+        ...     "gap": WindowConfig("trigger", "start + 48h", False, True),
+        ...     "input": WindowConfig(None, "trigger + 24h", True, True),
+        ...     "target": WindowConfig("gap.end", "start -> discharge_or_death", False, True),
+        ... }
+        >>> cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
+        >>> print_tree(cfg.window_tree)
+        trigger
+        ├── input.end
+        │   └── input.start
+        └── gap.end
+            └── target.end
+
+        >>> offsets = _get_direct_temporal_offsets(cfg)
+        >>> for k, v in offsets.items():
+        ...     for kk, vv in v.items():
+        ...         print(f"{k.node_name} -> {kk.node_name}: {vv}")
+        gap.end -> trigger: 2 days, 0:00:00
+        trigger -> gap.end: -2 days, 0:00:00
+        trigger -> input.end: -1 day, 0:00:00
+        input.end -> trigger: 1 day, 0:00:00
+    """
+
+    window_nodes = [WindowNode("trigger", None)]
+    window_nodes.extend(WindowNode(*e) for e in itertools.product(task_cfg.windows.keys(), ("start", "end")))
+
+    singleton_past_offsets = defaultdict(dict)
+
+    for in_node in window_nodes:
+        res_node = _resolve_node(task_cfg, root_node=in_node)
+
+        if in_node.root is None:
+            continue
+
+        referenced_node = _get_referenced_node(task_cfg.windows, in_node)
+        referenced_node = _resolve_node(task_cfg, root_node=referenced_node)
+
+        window_cfg = task_cfg.windows[in_node.name]
+        bound = window_cfg._parsed_start if in_node.root == "start" else window_cfg._parsed_end
+
+        if bound["offset"] is not None:
+            # A positive offset means that referenced_node occurs after res_node.
+            singleton_past_offsets[res_node][referenced_node] = parse_timedelta(bound["offset"])
+            singleton_past_offsets[referenced_node][res_node] = -parse_timedelta(bound["offset"])
+
+    return singleton_past_offsets
+
+
+def _get_all_temporal_offsets(task_cfg: TaskExtractorConfig) -> dict[WindowNode, dict[WindowNode, timedelta]]:
+    """Returns a mapping from a node to a dictionary of all nodes that have known timedeltas from it.
+
+    Args:
+        task_cfg: The task configuration to analyze.
+
+    Returns:
+        A mapping of all, implicit or explicit, known temporal relationships between nodes in the task
+        configuration.
+
+    Examples:
+        >>> from aces.config import PlainPredicateConfig, EventConfig
+        >>> predicates = {
+        ...     "icu_admission": PlainPredicateConfig("ICU_ADMISSION"),
+        ...     "discharge_or_death": PlainPredicateConfig("DISCHARGE_OR_DEATH"),
+        ... }
+        >>> trigger = EventConfig("icu_admission")
+        >>> windows = {
+        ...     "gap": WindowConfig("trigger", "start + 48h", False, True),
+        ...     "input": WindowConfig(None, "trigger + 24h", True, True),
+        ...     "target": WindowConfig("gap.end", "start -> discharge_or_death", False, True),
+        ... }
+        >>> cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
+        >>> print_tree(cfg.window_tree)
+        trigger
+        ├── input.end
+        │   └── input.start
+        └── gap.end
+            └── target.end
+        >>> offsets = _get_all_temporal_offsets(cfg)
+        >>> for k, v in offsets.items():
+        ...     for kk, vv in v.items():
+        ...         print(f"{k.node_name} -> {kk.node_name}: {vv}")
+        gap.end -> trigger: 2 days, 0:00:00
+        gap.end -> input.end: 1 day, 0:00:00
+        trigger -> input.end: -1 day, 0:00:00
+        trigger -> gap.end: -2 days, 0:00:00
+        input.end -> trigger: 1 day, 0:00:00
+        input.end -> gap.end: -1 day, 0:00:00
+    """
+
+    window_nodes = [WindowNode("trigger", None)]
+    window_nodes.extend(WindowNode(*e) for e in itertools.product(task_cfg.windows.keys(), ("start", "end")))
+
+    # 1. Get the direct parent-child temporal relationships.
+    singleton_past_offsets = _get_direct_temporal_offsets(task_cfg)
+
+    # 2. Iterate through all temporal offsets and aggregate over all ancestors.
+    total_past_offsets = _singleton_to_ancestral_relationships({**singleton_past_offsets})
+
+    # total past offsets maps each node to the set of all nodes that have a known temporal offset to it. E.g.,
+    # total_past_offsets["A"] = {"B": time of B - time of A, ...}.
+
+    # 3. Examine the offsets between children of a common root in the tree to find non-tree temporal ordering
+    # guarantees.
+
+    for unresolved_node in window_nodes:
+        node = _resolve_node(task_cfg, root_node=unresolved_node)
+        tree_node = task_cfg.window_nodes[node.node_name]
+
+        if len(tree_node.children) <= 1:
+            # The node's children have no siblings, so all temporal constraints would be caught by the above
+            # loop.
+            continue
+
+        sibling_offsets_from_node = {}
+        for child in tree_node.children:
+            child_node = _resolve_node(task_cfg, root_node=WindowNode(*child.node_name.split(".")))
+
+            if child_node in singleton_past_offsets.get(node, {}):
+                sibling_offsets_from_node[child_node] = singleton_past_offsets[node][child_node]
+
+        siblings = list(sibling_offsets_from_node.keys())
+        for sibling_node in siblings:
+            to_parse = [n for n in sibling_offsets_from_node if n != sibling_node]
+
+            while to_parse:
+                comparison_node = to_parse.pop()
+
+                if comparison_node in total_past_offsets[sibling_node]:
+                    continue
+
+                delta = sibling_offsets_from_node[sibling_node] - sibling_offsets_from_node[comparison_node]
+
+                total_past_offsets[sibling_node][comparison_node] = delta
+                total_past_offsets[comparison_node][sibling_node] = -delta
+
+                for comp_child in singleton_past_offsets[comparison_node]:
+                    sibling_offsets_from_node[comp_child] = (
+                        sibling_offsets_from_node[comparison_node]
+                        + singleton_past_offsets[comparison_node][comp_child]
+                    )
+                    to_parse.append(comp_child)
+
+    out = {}
+    for node, offsets in total_past_offsets.items():
+        out[node] = {}
+        for offset_node, offset in offsets.items():
+            if offset_node != node:
+                out[node][offset_node] = offset
+
+    return out
+
+
 def _ACES_config_timeline(task_cfg: TaskExtractorConfig) -> dict[WindowNode, set[WindowNode]]:
     """Produces a set of temporal order guarantees for the nodes in the ACES task configuration.
+
+    This function works in four steps:
+
+      1. For the immediate parent-child relationships between nodes, we identify (a) all known instances where
+         node A deterministically occurs before node B, and (b) (when possible), what temporal offset exists
+         between A and B. This is only possible to know for temporal nodes.
+      2. We iterate through all temporal offsets and aggregate over all ancestors. E.g., in this step, we
+         identify that if A is 3d before B, and B is 1d before C, then A is 4d before C.
+      3. We use all known temporal offsets across all levels of tree relationships to link sibling-level nodes
+         with temporal ordering guarantees.
+      4. We use all identified temporal ordering guarantees to identify all nodes that are guaranteed to occur
+         before other nodes, regardless of the tree structure.
 
     Args:
         task_cfg: The task configuration to analyze.
@@ -158,27 +454,22 @@ def _ACES_config_timeline(task_cfg: TaskExtractorConfig) -> dict[WindowNode, set
     The tree does not uniquely determine the timeline, but for this example, we have the following temporal
     relationships:
 
-        >>> _ACES_config_timeline(sample_ACES_cfg)
-        {WindowNode(name='trigger', root=None): set(),
-         WindowNode(name='input', root='start'): set(),
-         WindowNode(name='input', root='end'): {WindowNode(name='trigger', root=None)},
-         WindowNode(name='gap', root='end'): {WindowNode(name='input', root='end'),
-                                              WindowNode(name='trigger', root=None)},
-         WindowNode(name='target', root='end'): {WindowNode(name='gap', root='end'),
-                                                 WindowNode(name='trigger', root=None)}}
+        >>> temporal_constraints = _ACES_config_timeline(sample_ACES_cfg)
+        >>> for node, all_before in temporal_constraints.items():
+        ...     print(f"{node.node_name} is guaranteeably after: {sorted(n.node_name for n in all_before)}")
+        input.end is guaranteeably after: ['trigger']
+        gap.end is guaranteeably after: ['input.end', 'trigger']
+        target.end is guaranteeably after: ['gap.end', 'input.end', 'trigger']
     """
 
     window_nodes = [WindowNode("trigger", None)]
     window_nodes.extend(WindowNode(*e) for e in itertools.product(task_cfg.windows.keys(), ("start", "end")))
 
     # 1. Get the immediate, within tree, parent-children temporal relationships.
-    singleton_past = {}
+    singleton_past = defaultdict(set)
 
     for in_node in window_nodes:
         res_node = _resolve_node(task_cfg, root_node=in_node)
-
-        if res_node not in singleton_past:
-            singleton_past[res_node] = set()
 
         if in_node.root is None:
             continue
@@ -190,38 +481,24 @@ def _ACES_config_timeline(task_cfg: TaskExtractorConfig) -> dict[WindowNode, set
         bound = window_cfg._parsed_start if in_node.root == "start" else window_cfg._parsed_end
 
         occurs_before_referenced = bound["occurs_before"]
-        if occurs_before_referenced is None:
+        if occurs_before_referenced is None or occurs_before_referenced:
             continue
 
-        if not occurs_before_referenced:
-            singleton_past[res_node].add(referenced_node)
+        singleton_past[res_node].add(referenced_node)
 
-    # 2. Examine the offsets between children of a common root in the tree to find non-tree temporal ordering
-    # guarantees.
-    raise NotImplementedError("This is a placeholder for the actual implementation.")
+    # 2. Iterate through all temporal offsets and aggregate over all ancestors.
+    total_past_offsets = _get_all_temporal_offsets(task_cfg)
 
-    # 3. Traverse all singleton relationships to find all nodes that are guaranteed to occur before each node.
-    total_past = {}
+    # total past offsets maps each node to the set of all nodes that have a known temporal offset to it. E.g.,
+    # total_past_offsets["A"] = {"B": time of B - time of A, ...}.
 
-    for res_node, temporal_children in singleton_past.items():
-        to_parse = list(temporal_children)
-        parsed = set()
+    for node, temporal_offsets in total_past_offsets.items():
+        for alt_node, offset in temporal_offsets.items():
+            if offset > timedelta(0):
+                singleton_past[node].add(alt_node)
 
-        total_past[res_node] = set()
-
-        while to_parse:
-            current = to_parse.pop()
-
-            if current in parsed:
-                continue
-
-            total_past[res_node].add(current)
-
-            for child in singleton_past[current]:
-                if child not in parsed:
-                    to_parse.append(child)
-
-            parsed.add(current)
+    # 4. Traverse all singleton relationships to find all nodes that are guaranteed to occur before each node.
+    total_past = _singleton_to_ancestral_relationships(singleton_past)
 
     return total_past
 
@@ -332,23 +609,11 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
 
     task_node_timeline = _ACES_config_timeline(task_cfg)
 
-    if label_window_root not in task_node_timeline[prediction_time_window_root]:
+    if prediction_time_window_root not in task_node_timeline[label_window_root]:
         raise ValueError(
             f"Cannot guarantee that label node {label_window_root.node_name} occurs before "
             f"prediction time node {prediction_time_window_root.node_name} in the task configuration."
         )
-
-    label_window_node = task_cfg.window_nodes[label_window_root.node_name]
-    prediction_time_window_node = task_cfg.window_nodes[prediction_time_window_root.node_name]
-
-    print(f"Label window node: {label_window_node.node_name}")
-    print(f"Prediction time window node: {prediction_time_window_node.node_name}")
-    print(f"Label window ancestors: {list(label_window_node.ancestors)}")
-    print(f"Prediction time window ancestors: {list(prediction_time_window_node.ancestors)}")
-    print(print_tree(task_cfg.window_tree))
-    return
-
-    raise NotImplementedError("This is a placeholder for the actual validation code.")
 
 
 def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig):
