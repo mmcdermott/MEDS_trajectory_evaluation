@@ -1,3 +1,4 @@
+import copy
 import itertools
 from collections import defaultdict
 from datetime import timedelta
@@ -621,17 +622,60 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
 def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig):
     """Converts the task configuration to a zero-shot format by removing past and future criteria.
 
+    For zero-shot conversion, we construct an implicit "zero-shot task config" that functionally describes the
+    sequence of window endpoints from the prediction time to the end of (a) the task config, or (b) the label
+    config, if the labeler arguments indicate that future criteria should be ignored.
+
+    > [!WARNING]
+    > this implementation is not correct yet.
+
     Args:
         task_cfg: The task configuration to convert.
         labeler_cfg: The labeler configuration to use.
 
     Returns:
         A new task configuration object in zero-shot format.
-
-    Raises:
-        ValueError: If the task configuration is not valid for zero-shot labeling.
     """
-    raise NotImplementedError("This is a placeholder for the actual conversion code.")
+
+    label_window_root = _resolve_node(task_cfg, task_cfg.label_window)
+    prediction_time_window_root = _resolve_node(task_cfg, task_cfg.index_timestamp_window)
+
+    label_window_node = task_cfg.window_nodes[label_window_root.node_name]
+    prediction_time_window_node = task_cfg.window_nodes[prediction_time_window_root.node_name]
+
+    if label_window_node in prediction_time_window_node.ancestors:
+        rel_root = label_window_node
+        rel_leaf = prediction_time_window_node
+    elif prediction_time_window_node in label_window_node.ancestors:
+        rel_root = prediction_time_window_node
+        rel_leaf = label_window_node
+    else:
+        raise NotImplementedError("This is not supported yet.")
+
+    tree_between = {rel_root.node_name: rel_root, rel_leaf.node_name: rel_leaf}
+    tree_outside = {}
+
+    for name, node in task_cfg.window_nodes:
+        if node in rel_root.ancestors() or node not in rel_root.descendents():
+            continue
+        elif node in rel_leaf.ancestors():
+            tree_between[name] = node
+        elif node in rel_leaf.descendents():
+            tree_outside[name] = node
+
+    new_tree_between = copy.deepcopy(tree_between)
+    new_tree_outside = copy.deepcopy(tree_outside)
+
+    all_valid = {n.node_name for n in tree_between.values()} | {n.node_name for n in tree_outside.values()}
+
+    for n in list(new_tree_between.values()) + list(new_tree_outside.values()):
+        n.parents = [p for p in n.parents if p.node_name in all_valid]
+        n.children = [c for c in n.children if c.node_name in all_valid]
+
+    if labeler_cfg.drop_future_constraints:
+        return new_tree_between
+    else:
+        return {**new_tree_between, **new_tree_outside}
 
 
 def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
