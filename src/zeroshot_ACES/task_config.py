@@ -264,6 +264,7 @@ def _get_direct_temporal_offsets(
 
     Examples:
         >>> from aces.config import PlainPredicateConfig, EventConfig
+        >>> from bigtree import print_tree
         >>> predicates = {
         ...     "icu_admission": PlainPredicateConfig("ICU_ADMISSION"),
         ...     "discharge_or_death": PlainPredicateConfig("DISCHARGE_OR_DEATH"),
@@ -329,6 +330,7 @@ def _get_all_temporal_offsets(task_cfg: TaskExtractorConfig) -> dict[WindowNode,
 
     Examples:
         >>> from aces.config import PlainPredicateConfig, EventConfig
+        >>> from bigtree import print_tree
         >>> predicates = {
         ...     "icu_admission": PlainPredicateConfig("ICU_ADMISSION"),
         ...     "discharge_or_death": PlainPredicateConfig("DISCHARGE_OR_DEATH"),
