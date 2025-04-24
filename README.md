@@ -35,10 +35,67 @@ ZSACES_predict ...
 
 ## Supported Config Relaxations
 
-> [!TODO]
-> Add examples and more details about relaxations.
+We support a few different relaxations that can help make zero-shot label extraction simpler and more
+accommodating. These relaxations are not always appropriate for all tasks, but they can be useful in some
+cases. To understand them deeply, we'll use several examples, which we'll set up first.
 
-### 1. Remove inclusion/exclusion criteria
+### Example Configurations
+
+To explore these relaxations, we'll use a few simple example task configs. To construct them, we first need to
+import the relevant ACES config classes:
+
+```python
+>>> from aces.config import PlainPredicateConfig, EventConfig, TaskExtractorConfig, WindowConfig
+
+```
+
+We'll also import the `print_ACES` helper function to visualize the task configs:
+
+```python
+>>> from zeroshot_ACES.aces_utils import print_ACES
+
+```
+
+#### Example 1: In-hospital mortality prediction
+
+**TODO**
+
+#### Example 2: 30-day post discharge mortality prediction
+
+Given a hospital admission, we'll use the first 24 hours of data to predict whether or not the patient will
+die within 30 days of discharge (with a 1-day gap window post discharge to avoid future leakage):
+
+```python
+>>> predicates = {
+...     "admission": PlainPredicateConfig("ADMISSION"),
+...     "discharge": PlainPredicateConfig("DISCHARGE"),
+... }
+>>> trigger = EventConfig("admission")
+>>> windows = {
+...     "input": WindowConfig(None, "trigger + 24h", True, True),
+...     "discharge": WindowConfig("input.end", "start -> discharge", False, True),
+...     "target": WindowConfig("discharge.end + 1d", "start + 29d", False, True),
+... }
+>>> post_discharge_cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
+>>> print_ACES(post_discharge_cfg)
+    trigger
+    └── (+1 day, 0:00:00) input.end
+        ├── (prior _RECORD_START) input.start
+        └── (next discharge) discharge.end
+            └── (+1 day, 0:00:00) target.start
+                └── (+29 days, 0:00:00) target.end
+
+```
+
+#### Example 3: 30-day readmission prediction with censoring
+
+**TODO**\*
+
+#### Example 4: ???
+
+### Relaxations
+
+#### 1. Remove inclusion/exclusion criteria
 
 This relaxation removes all inclusion/exclusion criteria from the task config, but does not change the window
 boundaries that are used to compile the task cohort.
@@ -53,7 +110,7 @@ This relaxation can be applied in several variants:
 1. Remove all inclusion/exclusion criteria.
 2. Remove all post-target window inclusion/exclusion criteria (e.g., remove censoring protections).
 
-### 2. Absorb gap windows into target
+#### 2. Absorb gap windows into target
 
 This relaxation absorbs all windows between the input and target windows into the target window. This can only
 be used if the constraints of these windows are all identical and mutually satisfiable. This relaxation allows
