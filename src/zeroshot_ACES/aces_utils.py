@@ -1,8 +1,78 @@
 """Utilities to work with ACES configuration objects more easily."""
 
+from datetime import timedelta
 from typing import Literal, NamedTuple
 
 from aces.config import TaskExtractorConfig, WindowConfig
+from aces.types import TemporalWindowBounds, ToEventWindowBounds
+from bigtree import yield_tree
+
+
+def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
+    """A pretty printer for ACES task configurations.
+
+    This is purely for development / debugging purposes.
+
+    Args:
+        task_cfg: The task configuration to print.
+        **kwargs: Additional arguments to pass to the print function.
+
+    Examples:
+        >>> print_ACES(sample_ACES_cfg)
+        trigger
+        └── (+1 day, 0:00:00) input.end
+            └── (+1 day, 0:00:00) gap.end
+                └── (next discharge_or_death) target.end
+
+        >>> from aces.config import PlainPredicateConfig, EventConfig
+        >>> predicates = {
+        ...     "admission": PlainPredicateConfig("ADMISSION"),
+        ...     "discharge": PlainPredicateConfig("DISCHARGE"),
+        ... }
+        >>> trigger = EventConfig("admission")
+        >>> windows = {
+        ...     "gap": WindowConfig("trigger", "start + 48h", False, True),
+        ...     "input": WindowConfig(None, "trigger + 24h", True, True),
+        ...     "discharge": WindowConfig("gap.end", "start -> discharge", False, True),
+        ...     "target": WindowConfig("discharge.end + 1d", "start + 29d", False, True),
+        ... }
+        >>> cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
+        >>> print_ACES(cfg)
+        trigger
+        ├── (+1 day, 0:00:00) input.end
+        │   └── (prior _RECORD_START) input.start
+        └── (+2 days, 0:00:00) gap.end
+            └── (next discharge) discharge.end
+                └── (+1 day, 0:00:00) target.start
+                    └── (+29 days, 0:00:00) target.end
+    """
+
+    for branch, stem, node in yield_tree(task_cfg.window_tree):
+        match getattr(node, "endpoint_expr", None):
+            case ToEventWindowBounds() as event_bound:
+                if event_bound.end_event.startswith("-"):
+                    event_str = f"prior {event_bound.end_event[1:]}"
+                else:
+                    event_str = f"next {event_bound.end_event}"
+
+                if event_bound.offset:
+                    sign = "+" if event_bound.offset >= timedelta(0) else "-"
+                    bound = f"({event_str} {sign} {event_bound.offset}) "
+                else:
+                    bound = f"({event_str}) "
+            case TemporalWindowBounds() as time_bound:
+                sign = "+" if time_bound.window_size >= timedelta(0) else "-"
+                if time_bound.offset:
+                    offset_sign = "+" if time_bound.offset >= timedelta(0) else "-"
+                    bound = f"({sign}{time_bound.window_size} {offset_sign} {time_bound.offset}) "
+                else:
+                    bound = f"({sign}{time_bound.window_size}) "
+            case None:
+                bound = ""
+            case _ as other:
+                raise ValueError(f"Unexpected type {type(other)} for endpoint expr: {other}.")
+
+        print(f"{branch}{stem}{bound}{node.node_name}", **kwargs)
 
 
 class WindowNode(NamedTuple):
