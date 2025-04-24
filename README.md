@@ -14,3 +14,10 @@ pip install zeroshot_ACES
 ```bash
 ZSACES_predict ...
 ```
+
+# Documentation
+
+> [!IMPORTANT]
+> This library only works with a subset of ACES configs; namely, those that have a tree-based set of
+> dependencies between the end of the input window (the prediction time) and the end of the target window (the
+> label window).

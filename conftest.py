@@ -31,15 +31,19 @@ def sample_task_criteria_cfg() -> DictConfig:
             "trigger": "icu_admission",
             "windows": {
                 "input": {
-                    "start": None,
-                    "end": "trigger + 24h",
+                    "start": "trigger",
+                    "end": "start + 24h",
                     "start_inclusive": True,
                     "end_inclusive": True,
                     "index_timestamp": "end",
+                    "has": {
+                        "icu_admission": "(None, 0)",
+                        "discharge_or_death": "(None, 0)",
+                    },
                 },
                 "gap": {
-                    "start": "trigger",
-                    "end": "start + 48h",
+                    "start": "input.end",
+                    "end": "start + 24h",
                     "start_inclusive": False,
                     "end_inclusive": True,
                     "has": {
