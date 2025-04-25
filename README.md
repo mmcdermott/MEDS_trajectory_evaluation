@@ -277,7 +277,8 @@ input.end
 
 ```
 
-TODO: good or bad?
+Here, this may be a mistake, as it will classify trajectories as true if they die after discharge, provided
+discharge is within 1 day. However, using this in conjunction with absorbing gap windows is likely suitable.
 
 ##### On Example 2: Post-discharge Mortality
 
@@ -290,6 +291,10 @@ input.end
 
 ```
 
+Here, this is may be a mistake, as it will classify as negative trajectories who die within 1 day after
+discharge (whereas previously such trajectories would be excluded). However, in concert with gap window
+absorption, this may be suitable.
+
 ##### On Example 3: Readmission
 
 ```python
@@ -301,6 +306,10 @@ hospitalization.end
 
 ```
 
+In this example, there are both good and bad aspects of these changes. First, this will now label trajectories
+as negative if they are admitted within 1 day (previously, they would have been excluded), which is likely
+problematic. But it also renders the censoring window moot, which may improve the efficiency.
+
 ##### On Example 4: 2nd infusion stage adverse event
 
 ```python
@@ -311,6 +320,10 @@ hospitalization.end
         └── (next infusion_end) 2nd_infusion.end
 
 ```
+
+This may be suitable here; it still tracks the right target (adverse events within the 2nd infusion period),
+but now will include labels for patients who have adverse events in both, which may improve the predictive
+quality or efficiency of the trajectory-driven predictor.
 
 #### 2. Absorb gap windows into target
 
