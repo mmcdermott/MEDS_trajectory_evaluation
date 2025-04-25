@@ -94,9 +94,9 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
     Examples:
         >>> print_ACES(sample_ACES_cfg)
         trigger
-        └── (+1 day, 0:00:00) input.end (no icu_admission, discharge_or_death)
+        └── (+1 day, 0:00:00) input.end (no icu_admission, discharge_or_death); **Prediction Time**
             └── (+1 day, 0:00:00) gap.end (no icu_admission, discharge_or_death)
-                └── (next discharge_or_death) target.end
+                └── (next discharge_or_death) target.end; **Label: Presence of death**
 
         >>> from aces.config import PlainPredicateConfig, EventConfig
         >>> predicates = {
@@ -142,11 +142,26 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
                     └── (+29 days, 0:00:00) target.end
     """
 
+    index_ts_window_name = getattr(task_cfg, "index_timestamp_window", None)
+
+    if index_ts_window_name:
+        index_ts_window = task_cfg.windows[index_ts_window_name]
+        index_ts_node = _resolve_node(
+            task_cfg, root_node=WindowNode(index_ts_window_name, index_ts_window.index_timestamp)
+        )
+    else:
+        index_ts_node = None
+
     for branch, stem, node in yield_tree(task_cfg.window_tree):
         window_name = node.node_name.split(".")[0]
 
+        if index_ts_node and (node.node_name == index_ts_node.node_name):
+            index_ts_str = "; **Prediction Time**"
+        else:
+            index_ts_str = ""
+
         if window_name == "trigger":
-            print(f"{branch}{stem}{node.node_name}", **kwargs)
+            print(f"{branch}{stem}{node.node_name}{index_ts_str}", **kwargs)
             continue
 
         match getattr(node, "endpoint_expr", None):
@@ -177,12 +192,16 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
 
         side = node.node_name.split(".")[1]
 
-        include_constraints = side != window_cfg.root_node
+        is_end_node = side != window_cfg.root_node
+
+        if not is_end_node:
+            print(f"{branch}{stem}{bound}{node.node_name}{index_ts_str}", **kwargs)
+            continue
+
         c_str = get_constraint_str(window_cfg)
-
-        constraint_str = f" ({get_constraint_str(window_cfg)})" if include_constraints and c_str else ""
-
-        print(f"{branch}{stem}{bound}{node.node_name}{constraint_str}", **kwargs)
+        constraint_str = f" ({get_constraint_str(window_cfg)})" if c_str else ""
+        label_str = f"; **Label: Presence of {window_cfg.label}**" if window_cfg.label else ""
+        print(f"{branch}{stem}{bound}{node.node_name}{constraint_str}{label_str}{index_ts_str}", **kwargs)
 
 
 class WindowNode(NamedTuple):

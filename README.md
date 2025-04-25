@@ -85,9 +85,9 @@ We'll also import the `print_ACES` helper function to visualize the task configs
 >>> print_ACES(in_hosp_mortality_cfg)
 trigger
 ├── (start of record) sufficient_history.start (at least 5 event(s))
-└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
+└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death); **Prediction Time**
     └── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
-        └── (next discharge_or_death) target.end
+        └── (next discharge_or_death) target.end; **Label: Presence of death**
 
 ```
 
@@ -124,10 +124,10 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 >>> print_ACES(post_discharge_mortality_cfg)
 trigger
 ├── (start of record) sufficient_history.start (at least 5 event(s))
-└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
+└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death); **Prediction Time**
     └── (next discharge) hospitalization.end (no death)
         └── (+1 day, 0:00:00) gap.end (no admission, death)
-            └── (+29 days, 0:00:00) target.end
+            └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
 
 ```
 
@@ -164,11 +164,11 @@ window.
 ...     }
 ... )
 >>> print_ACES(readmission_cfg)
-trigger
+trigger; **Prediction Time**
 ├── (prior admission) hospitalization.start (at least 10 event(s))
 │   └── (start of record) sufficient_history.start (at least 5 event(s))
 └── (+1 day, 0:00:00) gap.end (no admission, death)
-    └── (+29 days, 0:00:00) target.end
+    └── (+29 days, 0:00:00) target.end; **Label: Presence of admission**
         └── (end of record) censoring_protection.end (at least 1 event(s))
 
 ```
@@ -202,10 +202,10 @@ set-ups.
 ...     }
 ... )
 >>> print_ACES(two_stage_cfg)
-trigger
+trigger; **Prediction Time**
 └── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
     └── (next infusion_start) 2nd_infusion.start
-        └── (next infusion_end) 2nd_infusion.end
+        └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
 
 ```
 
