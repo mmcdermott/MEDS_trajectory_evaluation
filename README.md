@@ -84,7 +84,7 @@ We'll also import the `print_ACES` helper function to visualize the task configs
 ... )
 >>> print_ACES(in_hosp_mortality_cfg)
 trigger
-├── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+├── (start of record) sufficient_history.start (at least 5 event(s))
 └── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
     └── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
         └── (next discharge_or_death) target.end
@@ -123,7 +123,7 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 ... )
 >>> print_ACES(post_discharge_mortality_cfg)
 trigger
-├── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+├── (start of record) sufficient_history.start (at least 5 event(s))
 └── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
     └── (next discharge) hospitalization.end (no death)
         └── (+1 day, 0:00:00) gap.end (no admission, death)
@@ -166,10 +166,10 @@ window.
 >>> print_ACES(readmission_cfg)
 trigger
 ├── (prior admission) hospitalization.start (at least 10 event(s))
-│   └── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+│   └── (start of record) sufficient_history.start (at least 5 event(s))
 └── (+1 day, 0:00:00) gap.end (no admission, death)
     └── (+29 days, 0:00:00) target.end
-        └── (next _RECORD_END) censoring_protection.end (at least 1 event(s))
+        └── (end of record) censoring_protection.end (at least 1 event(s))
 
 ```
 
@@ -243,7 +243,7 @@ input.end
 hospitalization.end
 └── (+1 day, 0:00:00) gap.end (no admission, death)
     └── (+29 days, 0:00:00) target.end
-        └── (next _RECORD_END) censoring_protection.end (at least 1 event(s))
+        └── (end of record) censoring_protection.end (at least 1 event(s))
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg))
 1st_infusion.start
 └── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
@@ -302,7 +302,7 @@ absorption, this may be suitable.
 hospitalization.end
 └── (+1 day, 0:00:00) gap.end
     └── (+29 days, 0:00:00) target.end
-        └── (next _RECORD_END) censoring_protection.end
+        └── (end of record) censoring_protection.end
 
 ```
 

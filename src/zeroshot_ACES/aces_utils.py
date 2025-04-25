@@ -114,7 +114,7 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
         >>> print_ACES(cfg)
         trigger
         ├── (+1 day, 0:00:00) input.end
-        │   └── (prior _RECORD_START) input.start
+        │   └── (start of record) input.start
         └── (+2 days, 0:00:00) gap.end
             └── (next discharge) discharge.end
                 └── (+1 day, 0:00:00) target.start
@@ -135,7 +135,7 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
         ├── (-2 days, 0:00:00) pre_data.end
         │   └── (-12 days, 0:00:00) pre_data.start
         ├── (+1 day, 0:00:00) input.end
-        │   └── (prior _RECORD_START) input.start
+        │   └── (start of record) input.start
         └── (+2 days, 0:00:00) gap.end
             └── (next discharge) discharge.end
                 └── (+1 day, 0:00:00) target.start
@@ -151,7 +151,11 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
 
         match getattr(node, "endpoint_expr", None):
             case ToEventWindowBounds() as event_bound:
-                if event_bound.end_event.startswith("-"):
+                if event_bound.end_event == "-_RECORD_START":
+                    event_str = "start of record"
+                elif event_bound.end_event == "_RECORD_END":
+                    event_str = "end of record"
+                elif event_bound.end_event.startswith("-"):
                     event_str = f"prior {event_bound.end_event[1:]}"
                 else:
                     event_str = f"next {event_bound.end_event}"
