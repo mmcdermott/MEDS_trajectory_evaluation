@@ -46,6 +46,7 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
                 └── (+1 day, 0:00:00) target.start
                     └── (+29 days, 0:00:00) target.end
         >>> windows = {
+        ...     "prior_hospitalization": WindowConfig("end <- admission", "trigger <- discharge", True, True),
         ...     "pre_data": WindowConfig("end - 12d", "trigger-2d", True, False),
         ...     "gap": WindowConfig("trigger", "start + 48h", False, True),
         ...     "input": WindowConfig(None, "trigger + 24h", True, True),
@@ -55,6 +56,8 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
         >>> cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
         >>> print_ACES(cfg)
         trigger
+        ├── (prior discharge) prior_hospitalization.end
+        │   └── (prior admission) prior_hospitalization.start
         ├── (-2 days, 0:00:00) pre_data.end
         │   └── (-12 days, 0:00:00) pre_data.start
         ├── (+1 day, 0:00:00) input.end
