@@ -45,6 +45,24 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
             └── (next discharge) discharge.end
                 └── (+1 day, 0:00:00) target.start
                     └── (+29 days, 0:00:00) target.end
+        >>> windows = {
+        ...     "pre_data": WindowConfig("end - 12d", "trigger-2d", True, False),
+        ...     "gap": WindowConfig("trigger", "start + 48h", False, True),
+        ...     "input": WindowConfig(None, "trigger + 24h", True, True),
+        ...     "discharge": WindowConfig("gap.end", "start -> discharge", False, True),
+        ...     "target": WindowConfig("discharge.end + 1d", "start + 29d", False, True),
+        ... }
+        >>> cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
+        >>> print_ACES(cfg)
+        trigger
+        ├── (-2 days, 0:00:00) pre_data.end
+        │   └── (-12 days, 0:00:00) pre_data.start
+        ├── (+1 day, 0:00:00) input.end
+        │   └── (prior _RECORD_START) input.start
+        └── (+2 days, 0:00:00) gap.end
+            └── (next discharge) discharge.end
+                └── (+1 day, 0:00:00) target.start
+                    └── (+29 days, 0:00:00) target.end
     """
 
     for branch, stem, node in yield_tree(task_cfg.window_tree):
@@ -56,15 +74,13 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
                     event_str = f"next {event_bound.end_event}"
 
                 if event_bound.offset:
-                    sign = "+" if event_bound.offset >= timedelta(0) else "-"
-                    bound = f"({event_str} {sign} {event_bound.offset}) "
+                    raise NotImplementedError("Offset not supported.")
                 else:
                     bound = f"({event_str}) "
             case TemporalWindowBounds() as time_bound:
-                sign = "+" if time_bound.window_size >= timedelta(0) else "-"
+                sign = "+" if time_bound.window_size >= timedelta(0) else ""
                 if time_bound.offset:
-                    offset_sign = "+" if time_bound.offset >= timedelta(0) else "-"
-                    bound = f"({sign}{time_bound.window_size} {offset_sign} {time_bound.offset}) "
+                    raise NotImplementedError("Offset not supported.")
                 else:
                     bound = f"({sign}{time_bound.window_size}) "
             case None:
