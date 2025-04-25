@@ -133,7 +133,8 @@ trigger
 
 #### Example 3: 30-day readmission prediction with censoring
 
-**TODO**
+This example features a 30-day readmission risk prediction task, but with a post-target censoring protection
+window.
 
 ```python
 >>> readmission_cfg = TaskExtractorConfig(
@@ -172,7 +173,47 @@ trigger
 
 ```
 
-#### Example 4: ???
+#### Example 4: Two-stage Infusion
+
+In this hypothetical example, we are examining a cohort of patients who are given an infusion, then given a
+drug, then (within 10 minutes) have their infusion stopped temporarily, then resumed. We are interested in
+predicting, at the time of the drug being given, about an adverse event within their second infusion stage.
+The reason to have such a task is to explore when relaxations are or aren't appropriate in more complex
+set-ups.
+
+```python
+>>> two_stage_cfg = TaskExtractorConfig(
+...     predicates={
+...         "infusion_start": PlainPredicateConfig("INFUSION//START"),
+...         "infusion_end": PlainPredicateConfig("INFUSION//END"),
+...         "drug_given": PlainPredicateConfig("special_drug"),
+...         "adverse_event": PlainPredicateConfig("special_adverse_event"),
+...     },
+...     trigger=EventConfig("drug_given"),
+...     windows={
+...         "1st_infusion": WindowConfig(
+...             "trigger", "start -> infusion_end", True, True, has={"adverse_event": "(0, None)"},
+...             index_timestamp="start",
+...         ),
+...         "2nd_infusion": WindowConfig(
+...             "1st_infusion.end -> infusion_start", "start -> infusion_end", True, True,
+...             label="adverse_event"
+...         ),
+...     }
+... )
+>>> print_ACES(two_stage_cfg)
+trigger
+└── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
+    └── (next infusion_start) 2nd_infusion.start
+        └── (next infusion_end) 2nd_infusion.end
+
+```
+
+#### Other examples we can't reflect:
+
+1. What if we only want to count something as a readmission only if the next admission has a discharge
+    associated with a particular diagnosis code? We can't reflect this in ACES currently, but it would pose
+    additional challenges.
 
 ### Relaxations
 
