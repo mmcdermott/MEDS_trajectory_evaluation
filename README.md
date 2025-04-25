@@ -217,6 +217,41 @@ trigger
 
 ### Relaxations
 
+We can perform any of the relaxations with the `convert_to_zero_shot` function in
+[`task_config`](src/zeroshot_ACES/task_config.py) and an appropriate labeler config. Let's import that now for
+use with our examples:
+
+```python
+>>> from zeroshot_ACES.task_config import convert_to_zero_shot
+
+```
+
+Even without any relaxations, the zero-shot conversion will naturally remove all tree nodes prior to the
+prediction time window:
+
+```python
+>>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg))
+input.end
+└── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
+    └── (next discharge_or_death) target.end
+>>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg))
+input.end
+└── (next discharge) hospitalization.end (no death)
+    └── (+1 day, 0:00:00) gap.end (no admission, death)
+        └── (+29 days, 0:00:00) target.end
+>>> print_ACES(convert_to_zero_shot(readmission_cfg))
+hospitalization.end
+└── (+1 day, 0:00:00) gap.end (no admission, death)
+    └── (+29 days, 0:00:00) target.end
+        └── (next _RECORD_END) censoring_protection.end (at least 1 event(s))
+>>> print_ACES(convert_to_zero_shot(two_stage_cfg))
+1st_infusion.start
+└── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
+    └── (next infusion_start) 2nd_infusion.start
+        └── (next infusion_end) 2nd_infusion.end
+
+```
+
 #### 1. Remove inclusion/exclusion criteria
 
 This relaxation removes all inclusion/exclusion criteria from the task config, but does not change the window
@@ -231,6 +266,51 @@ This relaxation can be applied in several variants:
 
 1. Remove all inclusion/exclusion criteria.
 2. Remove all post-target window inclusion/exclusion criteria (e.g., remove censoring protections).
+
+##### On Example 1: In Hospital Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, {"remove_all_criteria": True}))
+input.end
+└── (+1 day, 0:00:00) gap.end
+    └── (next discharge_or_death) target.end
+
+```
+
+TODO: good or bad?
+
+##### On Example 2: Post-discharge Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, {"remove_all_criteria": True}))
+input.end
+└── (next discharge) hospitalization.end
+    └── (+1 day, 0:00:00) gap.end
+        └── (+29 days, 0:00:00) target.end
+
+```
+
+##### On Example 3: Readmission
+
+```python
+>>> print_ACES(convert_to_zero_shot(readmission_cfg, {"remove_all_criteria": True}))
+hospitalization.end
+└── (+1 day, 0:00:00) gap.end
+    └── (+29 days, 0:00:00) target.end
+        └── (next _RECORD_END) censoring_protection.end
+
+```
+
+##### On Example 4: 2nd infusion stage adverse event
+
+```python
+>>> print_ACES(convert_to_zero_shot(two_stage_cfg, {"remove_all_criteria": True}))
+1st_infusion.start
+└── (next infusion_end) 1st_infusion.end
+    └── (next infusion_start) 2nd_infusion.start
+        └── (next infusion_end) 2nd_infusion.end
+
+```
 
 #### 2. Absorb gap windows into target
 

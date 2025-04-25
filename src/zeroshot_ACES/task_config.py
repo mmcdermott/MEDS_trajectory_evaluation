@@ -50,7 +50,7 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
         )
 
 
-def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig):
+def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None):
     """Converts the task configuration to a zero-shot format by removing past and future criteria.
 
     For zero-shot conversion, we construct an implicit "zero-shot task config" that functionally describes the
