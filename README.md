@@ -231,24 +231,24 @@ prediction time window:
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg))
-input.end
+input.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
-    └── (next discharge_or_death) target.end
+    └── (next discharge_or_death) target.end; **Label: Presence of death**
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg))
-input.end
+input.end; **Prediction Time**
 └── (next discharge) hospitalization.end (no death)
     └── (+1 day, 0:00:00) gap.end (no admission, death)
-        └── (+29 days, 0:00:00) target.end
+        └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
 >>> print_ACES(convert_to_zero_shot(readmission_cfg))
-hospitalization.end
+hospitalization.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end (no admission, death)
-    └── (+29 days, 0:00:00) target.end
+    └── (+29 days, 0:00:00) target.end; **Label: Presence of admission**
         └── (end of record) censoring_protection.end (at least 1 event(s))
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg))
-1st_infusion.start
+1st_infusion.start; **Prediction Time**
 └── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
     └── (next infusion_start) 2nd_infusion.start
-        └── (next infusion_end) 2nd_infusion.end
+        └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
 
 ```
 
@@ -271,9 +271,9 @@ This relaxation can be applied in several variants:
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, {"remove_all_criteria": True}))
-input.end
+input.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end
-    └── (next discharge_or_death) target.end
+    └── (next discharge_or_death) target.end; **Label: Presence of death**
 
 ```
 
@@ -284,10 +284,10 @@ discharge is within 1 day. However, using this in conjunction with absorbing gap
 
 ```python
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, {"remove_all_criteria": True}))
-input.end
+input.end; **Prediction Time**
 └── (next discharge) hospitalization.end
     └── (+1 day, 0:00:00) gap.end
-        └── (+29 days, 0:00:00) target.end
+        └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
 
 ```
 
@@ -299,9 +299,9 @@ absorption, this may be suitable.
 
 ```python
 >>> print_ACES(convert_to_zero_shot(readmission_cfg, {"remove_all_criteria": True}))
-hospitalization.end
+hospitalization.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end
-    └── (+29 days, 0:00:00) target.end
+    └── (+29 days, 0:00:00) target.end; **Label: Presence of admission**
         └── (end of record) censoring_protection.end
 
 ```
@@ -314,10 +314,10 @@ problematic. But it also renders the censoring window moot, which may improve th
 
 ```python
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg, {"remove_all_criteria": True}))
-1st_infusion.start
+1st_infusion.start; **Prediction Time**
 └── (next infusion_end) 1st_infusion.end
     └── (next infusion_start) 2nd_infusion.start
-        └── (next infusion_end) 2nd_infusion.end
+        └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
 
 ```
 
