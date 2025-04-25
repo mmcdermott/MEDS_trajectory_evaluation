@@ -84,9 +84,9 @@ We'll also import the `print_ACES` helper function to visualize the task configs
 ... )
 >>> print_ACES(in_hosp_mortality_cfg)
 trigger
-├── (prior _RECORD_START) sufficient_history.start
-└── (+1 day, 0:00:00) input.end
-    └── (+1 day, 0:00:00) gap.end
+├── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
+    └── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
         └── (next discharge_or_death) target.end
 
 ```
@@ -97,32 +97,80 @@ Given a hospital admission, we'll use the first 24 hours of data to predict whet
 die within 30 days of discharge (with a 1-day gap window post discharge to avoid future leakage):
 
 ```python
->>> predicates = {
-...     "admission": PlainPredicateConfig("ADMISSION"),
-...     "discharge": PlainPredicateConfig("DISCHARGE"),
-...     "death": PlainPredicateConfig("MEDS_DEATH"),
-...     "discharge_or_death": PlainPredicateConfig("MEDS_DEATH"),
-... }
->>> trigger = EventConfig("admission")
->>> windows = {
-...     "input": WindowConfig(None, "trigger + 24h", True, True),
-...     "discharge": WindowConfig("input.end", "start -> discharge", False, True),
-...     "target": WindowConfig("discharge.end + 1d", "start + 29d", False, True),
-... }
->>> post_discharge_cfg = TaskExtractorConfig(predicates=predicates, trigger=trigger, windows=windows)
->>> print_ACES(post_discharge_cfg)
-    trigger
-    └── (+1 day, 0:00:00) input.end
-        ├── (prior _RECORD_START) input.start
-        └── (next discharge) discharge.end
-            └── (+1 day, 0:00:00) target.start
-                └── (+29 days, 0:00:00) target.end
+>>> post_discharge_mortality_cfg = TaskExtractorConfig(
+...     predicates={
+...         "admission": PlainPredicateConfig("ADMISSION"),
+...         "discharge": PlainPredicateConfig("DISCHARGE"),
+...         "death": PlainPredicateConfig("MEDS_DEATH"),
+...         "discharge_or_death": DerivedPredicateConfig("or(discharge, death)"),
+...     },
+...     trigger=EventConfig("admission"),
+...     windows={
+...         "sufficient_history": WindowConfig(None, "trigger", True, False, has={"_ANY_EVENT": "(5, None)"}),
+...         "input": WindowConfig(
+...             "trigger", "start + 24h", False, True, index_timestamp="end",
+...             has={"admission": "(None, 0)", "discharge_or_death": "(None, 0)"},
+...         ),
+...         "hospitalization": WindowConfig(
+...             "input.end", "start -> discharge", False, True, has={"death": "(None, 0)"},
+...         ),
+...         "gap": WindowConfig(
+...             "hospitalization.end", "start + 1d", False, True,
+...             has={"admission": "(None, 0)", "death": "(None, 0)"},
+...         ),
+...         "target": WindowConfig("gap.end", "start + 29d", False, True, label="death"),
+...     }
+... )
+>>> print_ACES(post_discharge_mortality_cfg)
+trigger
+├── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+└── (+1 day, 0:00:00) input.end (no admission, discharge_or_death)
+    └── (next discharge) hospitalization.end (no death)
+        └── (+1 day, 0:00:00) gap.end (no admission, death)
+            └── (+29 days, 0:00:00) target.end
 
 ```
 
 #### Example 3: 30-day readmission prediction with censoring
 
 **TODO**
+
+```python
+>>> readmission_cfg = TaskExtractorConfig(
+...     predicates={
+...         "admission": PlainPredicateConfig("ADMISSION"),
+...         "discharge": PlainPredicateConfig("DISCHARGE"),
+...         "death": PlainPredicateConfig("MEDS_DEATH"),
+...         "discharge_or_death": DerivedPredicateConfig("or(discharge, death)"),
+...     },
+...     trigger=EventConfig("discharge"),
+...     windows={
+...         "sufficient_history": WindowConfig(
+...             None, "hospitalization.start", True, False, has={"_ANY_EVENT": "(5, None)"}
+...         ),
+...         "hospitalization": WindowConfig(
+...             "end <- admission", "trigger", True, True, has={"_ANY_EVENT": "(10, None)"},
+...             index_timestamp="end"
+...         ),
+...         "gap": WindowConfig(
+...             "hospitalization.end", "start + 1d", False, True,
+...             has={"admission": "(None, 0)", "death": "(None, 0)"},
+...         ),
+...         "target": WindowConfig("gap.end", "start + 29d", False, True, label="admission"),
+...         "censoring_protection": WindowConfig(
+...             "target.end", None, True, True, has={"_ANY_EVENT": "(1, None)"},
+...         ),
+...     }
+... )
+>>> print_ACES(readmission_cfg)
+trigger
+├── (prior admission) hospitalization.start (at least 10 event(s))
+│   └── (prior _RECORD_START) sufficient_history.start (at least 5 event(s))
+└── (+1 day, 0:00:00) gap.end (no admission, death)
+    └── (+29 days, 0:00:00) target.end
+        └── (next _RECORD_END) censoring_protection.end (at least 1 event(s))
+
+```
 
 #### Example 4: ???
 

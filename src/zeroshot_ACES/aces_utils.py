@@ -42,7 +42,7 @@ def get_constraint_str(window_cfg: WindowConfig) -> str:
         ...         "b", "start + 1d", False, False,
         ...         has={
         ...             "A": "(5, 6)",
-        ...             "B": "(1, None)",
+        ...             "_ANY_EVENT": "(1, None)",
         ...             "C": "(2, 4)",
         ...             "D": "(None, 0)",
         ...             "E": "(2, None)",
@@ -52,14 +52,16 @@ def get_constraint_str(window_cfg: WindowConfig) -> str:
         ...         },
         ...     ),
         ... )
-        'between 5-6 A, 2-4 C; at least 1 B, 2 E; no D, F, H; no more than 2 G'
+        'between 5-6 A, 2-4 C; at least 1 event(s), 2 E; no D, F, H; no more than 2 G'
     """
     if not window_cfg.has:
         return ""
 
     by_prefix = defaultdict(list)
-    for k, constraint in window_cfg.has.items():
+    for k_raw, constraint in window_cfg.has.items():
         left, right = constraint
+
+        k = "event(s)" if k_raw == "_ANY_EVENT" else k_raw
 
         if left is None and right == 0:
             prefix = "no"
