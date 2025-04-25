@@ -45,7 +45,9 @@ To explore these relaxations, we'll use a few simple example task configs. To co
 import the relevant ACES config classes:
 
 ```python
->>> from aces.config import PlainPredicateConfig, EventConfig, TaskExtractorConfig, WindowConfig
+>>> from aces.config import (
+...     PlainPredicateConfig, EventConfig, TaskExtractorConfig, WindowConfig, DerivedPredicateConfig,
+... )
 
 ```
 
@@ -58,7 +60,36 @@ We'll also import the `print_ACES` helper function to visualize the task configs
 
 #### Example 1: In-hospital mortality prediction
 
-**TODO**
+```python
+>>> in_hosp_mortality_cfg = TaskExtractorConfig(
+...     predicates={
+...         "admission": PlainPredicateConfig("ADMISSION"),
+...         "discharge": PlainPredicateConfig("DISCHARGE"),
+...         "death": PlainPredicateConfig("MEDS_DEATH"),
+...         "discharge_or_death": DerivedPredicateConfig("or(discharge, death)"),
+...     },
+...     trigger=EventConfig("admission"),
+...     windows={
+...         "sufficient_history": WindowConfig(None, "trigger", True, False, has={"_ANY_EVENT": "(5, None)"}),
+...         "input": WindowConfig(
+...             "trigger", "start + 24h", False, True, index_timestamp="end",
+...             has={"admission": "(None, 0)", "discharge_or_death": "(None, 0)"},
+...         ),
+...         "gap": WindowConfig(
+...             "input.end", "start + 24h", False, True,
+...             has={"admission": "(None, 0)", "discharge_or_death": "(None, 0)"},
+...         ),
+...         "target": WindowConfig("gap.end", "start -> discharge_or_death", False, True, label="death"),
+...     }
+... )
+>>> print_ACES(in_hosp_mortality_cfg)
+trigger
+├── (prior _RECORD_START) sufficient_history.start
+└── (+1 day, 0:00:00) input.end
+    └── (+1 day, 0:00:00) gap.end
+        └── (next discharge_or_death) target.end
+
+```
 
 #### Example 2: 30-day post discharge mortality prediction
 
@@ -69,6 +100,8 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 >>> predicates = {
 ...     "admission": PlainPredicateConfig("ADMISSION"),
 ...     "discharge": PlainPredicateConfig("DISCHARGE"),
+...     "death": PlainPredicateConfig("MEDS_DEATH"),
+...     "discharge_or_death": PlainPredicateConfig("MEDS_DEATH"),
 ... }
 >>> trigger = EventConfig("admission")
 >>> windows = {
@@ -89,7 +122,7 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 
 #### Example 3: 30-day readmission prediction with censoring
 
-**TODO**\*
+**TODO**
 
 #### Example 4: ???
 

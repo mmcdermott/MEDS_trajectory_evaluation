@@ -1,11 +1,83 @@
 """Utilities to work with ACES configuration objects more easily."""
 
+from collections import defaultdict
 from datetime import timedelta
 from typing import Literal, NamedTuple
 
 from aces.config import TaskExtractorConfig, WindowConfig
 from aces.types import TemporalWindowBounds, ToEventWindowBounds
 from bigtree import yield_tree
+
+
+def get_constraint_str(window_cfg: WindowConfig) -> str:
+    """Return a simple string representing the constraints of a window.
+
+    Args:
+        window_cfg: The configuration of the window whose constraints should be printed.
+
+    Returns:
+        A string representation of the constraints of a window.
+
+    Examples:
+        >>> get_constraint_str(WindowConfig("foo", "start + 1d", False, False))
+        ''
+        >>> get_constraint_str(
+        ...     WindowConfig("b", "start + 1d", False, False, has={"foo": "(None, 0)", "bar": "(None, 0)"}),
+        ... )
+        'no foo, bar'
+        >>> get_constraint_str(
+        ...     WindowConfig("b", "start + 1d", False, False, has={"foo": "(None, 4)", "bar": "(None, 2)"}),
+        ... )
+        'no more than 4 foo, 2 bar'
+        >>> get_constraint_str(
+        ...     WindowConfig("b", "start + 1d", False, False, has={"foo": "(5, None)", "bar": "(5, None)"}),
+        ... )
+        'at least 5 foo, 5 bar'
+        >>> get_constraint_str(
+        ...     WindowConfig("b", "start + 1d", False, False, has={"foo": "(5, 6)", "bar": "(1, 3)"}),
+        ... )
+        'between 5-6 foo, 1-3 bar'
+        >>> get_constraint_str(
+        ...     WindowConfig(
+        ...         "b", "start + 1d", False, False,
+        ...         has={
+        ...             "A": "(5, 6)",
+        ...             "B": "(1, None)",
+        ...             "C": "(2, 4)",
+        ...             "D": "(None, 0)",
+        ...             "E": "(2, None)",
+        ...             "F": "(None, 0)",
+        ...             "G": "(None, 2)",
+        ...             "H": "(None, 0)",
+        ...         },
+        ...     ),
+        ... )
+        'between 5-6 A, 2-4 C; at least 1 B, 2 E; no D, F, H; no more than 2 G'
+    """
+    if not window_cfg.has:
+        return ""
+
+    by_prefix = defaultdict(list)
+    for k, constraint in window_cfg.has.items():
+        left, right = constraint
+
+        if left is None and right == 0:
+            prefix = "no"
+            str_rep = k
+        elif left is None:
+            prefix = "no more than"
+            str_rep = f"{right} {k}"
+        elif right is None:
+            prefix = "at least"
+            str_rep = f"{left} {k}"
+        else:
+            prefix = "between"
+            str_rep = f"{left}-{right} {k}"
+
+        by_prefix[prefix].append(str_rep)
+
+    out_parts = [f"{prefix} {', '.join(strs)}" for prefix, strs in by_prefix.items()]
+    return "; ".join(out_parts)
 
 
 def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
@@ -20,8 +92,8 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
     Examples:
         >>> print_ACES(sample_ACES_cfg)
         trigger
-        └── (+1 day, 0:00:00) input.end
-            └── (+1 day, 0:00:00) gap.end
+        └── (+1 day, 0:00:00) input.end (no icu_admission, discharge_or_death)
+            └── (+1 day, 0:00:00) gap.end (no icu_admission, discharge_or_death)
                 └── (next discharge_or_death) target.end
 
         >>> from aces.config import PlainPredicateConfig, EventConfig
@@ -69,6 +141,12 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
     """
 
     for branch, stem, node in yield_tree(task_cfg.window_tree):
+        window_name = node.node_name.split(".")[0]
+
+        if window_name == "trigger":
+            print(f"{branch}{stem}{node.node_name}", **kwargs)
+            continue
+
         match getattr(node, "endpoint_expr", None):
             case ToEventWindowBounds() as event_bound:
                 if event_bound.end_event.startswith("-"):
@@ -86,12 +164,19 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
                     raise NotImplementedError("Offset not supported.")
                 else:
                     bound = f"({sign}{time_bound.window_size}) "
-            case None:
-                bound = ""
             case _ as other:
                 raise ValueError(f"Unexpected type {type(other)} for endpoint expr: {other}.")
 
-        print(f"{branch}{stem}{bound}{node.node_name}", **kwargs)
+        window_cfg = task_cfg.windows[window_name]
+
+        side = node.node_name.split(".")[1]
+
+        include_constraints = side != window_cfg.root_node
+        c_str = get_constraint_str(window_cfg)
+
+        constraint_str = f" ({get_constraint_str(window_cfg)})" if include_constraints and c_str else ""
+
+        print(f"{branch}{stem}{bound}{node.node_name}{constraint_str}", **kwargs)
 
 
 class WindowNode(NamedTuple):
