@@ -422,6 +422,9 @@ def _resolve_node(
 
         root_node = WindowNode(window_name, task_cfg.windows[window_name].root_node)
 
+    if root_node.node_name == task_cfg.window_tree.node_name:
+        return root_node
+
     while not _node_in_tree(task_cfg.windows, root_node):
         root_node = _get_referenced_node(task_cfg.windows, root_node)
 
