@@ -1,12 +1,13 @@
 """Utilities to define and manipulate zero-shot labeling task configurations from ACES configurations."""
 
+import copy
 from io import StringIO
 
 from aces.config import TaskExtractorConfig
 from bigtree import print_tree
 from omegaconf import DictConfig
 
-from .aces_utils import _resolve_node
+from .aces_utils import WindowNode, ZeroShotTaskConfig, _resolve_node
 
 
 def validate_task_cfg(task_cfg: TaskExtractorConfig):
@@ -50,7 +51,9 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
         )
 
 
-def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None):
+def convert_to_zero_shot(
+    task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
+) -> ZeroShotTaskConfig:
     """Converts the task configuration to a zero-shot format by removing past and future criteria.
 
     For zero-shot conversion, we construct an implicit "zero-shot task config" that functionally describes the
@@ -58,7 +61,7 @@ def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig 
     config, if the labeler arguments indicate that future criteria should be ignored.
 
     > [!WARNING]
-    > this implementation is not correct yet.
+    > this implementation is not complete yet.
 
     Args:
         task_cfg: The task configuration to convert.
@@ -68,7 +71,34 @@ def convert_to_zero_shot(task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig 
         A new task configuration object in zero-shot format.
     """
 
-    raise NotImplementedError("This is not supported yet.")
+    if labeler_cfg:
+        raise NotImplementedError("This is not supported yet.")
+
+    prediction_time_window = task_cfg.index_timestamp_window
+    new_root = _resolve_node(task_cfg, root_node=WindowNode(prediction_time_window, "end"))
+
+    new_task_cfg = ZeroShotTaskConfig(
+        predicates=copy.deepcopy(task_cfg.predicates),
+        windows=copy.deepcopy(task_cfg.windows),
+        trigger=copy.deepcopy(task_cfg.trigger),
+        label_window=copy.deepcopy(task_cfg.label_window),
+        index_timestamp_window=copy.deepcopy(task_cfg.index_timestamp_window),
+    )
+
+    new_root_node = new_task_cfg.window_nodes[new_root.node_name]
+    new_root_node.endpoint_expr = None
+
+    new_task_cfg.windows[prediction_time_window].has = None
+
+    new_task_cfg.window_tree = new_root_node
+
+    new_task_cfg.window_nodes = {
+        k: v
+        for k, v in new_task_cfg.window_nodes.items()
+        if k in {n.node_name for n in new_root_node.descendants} or k == new_root_node.node_name
+    }
+
+    return new_task_cfg
 
 
 def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):

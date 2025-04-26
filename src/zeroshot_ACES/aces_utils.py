@@ -6,7 +6,20 @@ from typing import Literal, NamedTuple
 
 from aces.config import TaskExtractorConfig, WindowConfig
 from aces.types import TemporalWindowBounds, ToEventWindowBounds
-from bigtree import yield_tree
+from bigtree import Node, yield_tree
+
+
+class ZeroShotTaskConfig(TaskExtractorConfig):
+    @property
+    def window_tree(self) -> Node:
+        if not hasattr(self, "_root_node"):
+            return self.window_nodes["trigger"]
+        else:
+            return self.window_nodes[self._root_node]
+
+    @window_tree.setter
+    def window_tree(self, node: Node):
+        self._root_node = node.node_name
 
 
 def get_constraint_str(window_cfg: WindowConfig) -> str:
@@ -185,6 +198,8 @@ def print_ACES(task_cfg: TaskExtractorConfig, **kwargs):
                     raise NotImplementedError("Offset not supported.")
                 else:
                     bound = f"({sign}{time_bound.window_size}) "
+            case None:
+                bound = ""
             case _ as other:
                 raise ValueError(f"Unexpected type {type(other)} for endpoint expr: {other}.")
 
