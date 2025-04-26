@@ -199,7 +199,7 @@ set-ups.
 ...     trigger=EventConfig("drug_given"),
 ...     windows={
 ...         "1st_infusion": WindowConfig(
-...             "trigger", "start -> infusion_end", True, True, has={"adverse_event": "(0, None)"},
+...             "trigger", "start -> infusion_end", True, True, has={"adverse_event": "(None, 0)"},
 ...             index_timestamp="start",
 ...         ),
 ...         "2nd_infusion": WindowConfig(
@@ -210,7 +210,7 @@ set-ups.
 ... )
 >>> print_ACES(two_stage_cfg)
 trigger; **Prediction Time**
-└── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
+└── (next infusion_end) 1st_infusion.end (no adverse_event)
     └── (next infusion_start) 2nd_infusion.start
         └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
 
@@ -268,13 +268,13 @@ hospitalization.end; **Prediction Time**
         └── (end of record) censoring_protection.end (at least 1 event(s))
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg))
 1st_infusion.start; **Prediction Time**
-└── (next infusion_end) 1st_infusion.end (at least 0 adverse_event)
+└── (next infusion_end) 1st_infusion.end (no adverse_event)
     └── (next infusion_start) 2nd_infusion.start
         └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
 
 ```
 
-#### 1. Remove inclusion/exclusion criteria
+#### 1. `remove_all_criteria`: Remove inclusion/exclusion criteria
 
 This relaxation removes all inclusion/exclusion criteria from the task config, but does not change the window
 boundaries that are used to compile the task cohort.
@@ -283,11 +283,6 @@ boundaries that are used to compile the task cohort.
 > Using this relaxation does _not_ mean that predictions are made over task samples that failed to meet the
 > task criteria (with respect to their real data). Rather, it just means that generated trajectories will not
 > be discarded on the basis of failing to meet post-input window inclusion/exclusion criteria.
-
-This relaxation can be applied in several variants:
-
-1. Remove all inclusion/exclusion criteria.
-2. Remove all post-target window inclusion/exclusion criteria (e.g., remove censoring protections).
 
 ##### On Example 1: In Hospital Mortality
 
@@ -347,12 +342,69 @@ This may be suitable here; it still tracks the right target (adverse events with
 but now will include labels for patients who have adverse events in both, which may improve the predictive
 quality or efficiency of the trajectory-driven predictor.
 
-#### 2. Absorb gap windows into target
+#### 2. `collapse_temporal_gap_windows`: Absorb temporal gap windows into target
 
-This relaxation absorbs all windows between the input and target windows into the target window. This can only
-be used if the constraints of these windows are all identical and mutually satisfiable. This relaxation allows
-you to make predictions with fewer generated tokens and simpler early stopping criteria.
+This relaxation absorbs any chain of temporal windows between the input and target window terminating at the
+target window into the target window. This can only be used if the constraints of these windows are all
+removed (or if the remove all criteria relaxation is applied as well). This relaxation allows you to make
+predictions with fewer generated tokens and simpler early stopping criteria.
 
 > [!NOTE]
-> This relaxation does not change the total time-span expected for the target window; it merely extends the
-> target window's start earlier in time to be the end of the input window, where possible.
+> This does not remove event bounded windows, though it does remove temporal windows directly before event
+> bound windows or absorb adjacent temporal windows together.
+
+```python
+>>> labeler_cfg = {"remove_all_criteria": True, "collapse_temporal_gap_windows": True}
+
+```
+
+##### On Example 1: In Hospital Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, labeler_cfg))
+input.end; **Prediction Time**
+└── (next discharge_or_death) target.end; **Label: Presence of death**
+
+```
+
+This is likely appropriate, as we will now simply classify if there is any death observed before the next
+discharge.
+
+##### On Example 2: Post-discharge Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, labeler_cfg))
+input.end; **Prediction Time**
+└── (next discharge) hospitalization.end
+    └── (+30 days, 0:00:00) target.end; **Label: Presence of death**
+
+```
+
+This is likely suitable; we have simply stremlined the prediction target to be anytime within the 30 days post
+discharge, giving the trajectory labeler a more flexible target.
+
+##### On Example 3: Readmission
+
+```python
+>>> print_ACES(convert_to_zero_shot(readmission_cfg, labeler_cfg))
+hospitalization.end; **Prediction Time**
+└── (+30 days, 0:00:00) target.end; **Label: Presence of admission**
+    └── (end of record) censoring_protection.end
+
+```
+
+This is likely an improvement over the basic config, because it is more accommodating to the target, but it
+still has a censoring prediction window we may want to remove.
+
+##### On Example 4: 2nd infusion stage adverse event
+
+```python
+>>> print_ACES(convert_to_zero_shot(two_stage_cfg, labeler_cfg))
+1st_infusion.start; **Prediction Time**
+└── (next infusion_end) 1st_infusion.end
+    └── (next infusion_start) 2nd_infusion.start
+        └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
+
+```
+
+This makes no difference as there are no temporal gap windows in this example.
