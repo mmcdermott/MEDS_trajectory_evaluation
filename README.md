@@ -408,3 +408,58 @@ still has a censoring prediction window we may want to remove.
 ```
 
 This makes no difference as there are no temporal gap windows in this example.
+
+#### 3. `remove_post_label_windows`: Removes all post-label windows from the task config
+
+This relaxation removes all windows that are after the label window. This is useful for removing censoring
+protection windows which expand the generation scope necessary to resolve a window.
+
+##### On Example 1: In Hospital Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, {"remove_post_label_windows": True}))
+input.end; **Prediction Time**
+└── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
+    └── (next discharge_or_death) target.end; **Label: Presence of death**
+
+```
+
+This makes no difference as there are no post-label windows in this example.
+
+##### On Example 2: Post-discharge Mortality
+
+```python
+>>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, {"remove_post_label_windows": True}))
+input.end; **Prediction Time**
+└── (next discharge) hospitalization.end (no death)
+    └── (+1 day, 0:00:00) gap.end (no admission, death)
+        └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
+
+```
+
+This makes no difference as there are no post-label windows in this example.
+
+##### On Example 3: Readmission
+
+```python
+>>> print_ACES(convert_to_zero_shot(readmission_cfg, {"remove_post_label_windows": True}))
+hospitalization.end; **Prediction Time**
+└── (+1 day, 0:00:00) gap.end (no admission, death)
+    └── (+29 days, 0:00:00) target.end; **Label: Presence of admission**
+```
+
+This is likely an improvement, as the censoring protection may complicate generation and reduce the
+efficiency.
+
+##### On Example 4: 2nd infusion stage adverse event
+
+```python
+>>> print_ACES(convert_to_zero_shot(two_stage_cfg, {"remove_post_label_windows": True}))
+1st_infusion.start; **Prediction Time**
+└── (next infusion_end) 1st_infusion.end (no adverse_event)
+    └── (next infusion_start) 2nd_infusion.start
+        └── (next infusion_end) 2nd_infusion.end; **Label: Presence of adverse_event**
+
+```
+
+This makes no difference as there are no post-label windows in this example.
