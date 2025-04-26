@@ -94,7 +94,9 @@ trigger
 #### Example 2: 30-day post discharge mortality prediction
 
 Given a hospital admission, we'll use the first 24 hours of data to predict whether or not the patient will
-die within 30 days of discharge (with a 1-day gap window post discharge to avoid future leakage):
+die within 30 days of discharge (with a 1-day gap window post discharge to avoid future leakage). We'll also
+impose another gap window after the admission to ensure that the hospitalization itself lasts at least 48
+hours.
 
 ```python
 >>> post_discharge_mortality_cfg = TaskExtractorConfig(
@@ -111,6 +113,10 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 ...             "trigger", "start + 24h", False, True, index_timestamp="end",
 ...             has={"admission": "(None, 0)", "discharge_or_death": "(None, 0)"},
 ...         ),
+...         "post_input": WindowConfig(
+...             "input.end", "start + 1d", False, True,
+...             has={"admission": "(None, 0)", "discharge_or_death": "(None, 0)"},
+...         ),
 ...         "hospitalization": WindowConfig(
 ...             "input.end", "start -> discharge", False, True, has={"death": "(None, 0)"},
 ...         ),
@@ -125,6 +131,7 @@ die within 30 days of discharge (with a 1-day gap window post discharge to avoid
 trigger
 ├── (start of record) sufficient_history.start (at least 5 event(s))
 └── (+1 day, 0:00:00) input.end (no admission, discharge_or_death); **Prediction Time**
+    ├── (+1 day, 0:00:00) post_input.end (no admission, discharge_or_death)
     └── (next discharge) hospitalization.end (no death)
         └── (+1 day, 0:00:00) gap.end (no admission, death)
             └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
@@ -226,19 +233,34 @@ use with our examples:
 
 ```
 
-Even without any relaxations, the zero-shot conversion will naturally remove all tree nodes prior to the
-prediction time window:
+Even without any relaxations, the zero-shot conversion will naturally prunes the tree to include only those
+nodes between the prediction time window and the label window or after the label window.
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg))
 input.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end (no admission, discharge_or_death)
     └── (next discharge_or_death) target.end; **Label: Presence of death**
+
+```
+
+> [!WARNING]
+> This can remove some criteria that you may still want to leverage. See, for example, how the post discharge
+> config has lost the window asserting the hospitalization is at least 48 hours. This could be corrected by
+> having the hospitalization window depend directly on the post input window, rather than the input window.
+
+```python
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg))
 input.end; **Prediction Time**
 └── (next discharge) hospitalization.end (no death)
     └── (+1 day, 0:00:00) gap.end (no admission, death)
         └── (+29 days, 0:00:00) target.end; **Label: Presence of death**
+
+```
+
+We still retain the prediction time, label, and relevant criteria in this view.
+
+```python
 >>> print_ACES(convert_to_zero_shot(readmission_cfg))
 hospitalization.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end (no admission, death)
