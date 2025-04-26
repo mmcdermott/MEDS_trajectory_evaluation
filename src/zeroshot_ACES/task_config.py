@@ -51,28 +51,18 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
         )
 
 
-def convert_to_zero_shot(
-    task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
-) -> ZeroShotTaskConfig:
-    """Converts the task configuration to a zero-shot format by removing past and future criteria.
+def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
+    """Strips all windows not direct descendants of the prediction time node and the tree for zero-shot use.
 
-    For zero-shot conversion, we construct an implicit "zero-shot task config" that functionally describes the
-    sequence of window endpoints from the prediction time to the end of (a) the task config, or (b) the label
-    config, if the labeler arguments indicate that future criteria should be ignored.
-
-    > [!WARNING]
-    > this implementation is not complete yet.
+    This ensures the zero-shot config does not rely on other windows outside the scope of the zero-shot
+    evaluation setting.
 
     Args:
         task_cfg: The task configuration to convert.
-        labeler_cfg: The labeler configuration to use.
 
     Returns:
-        A new task configuration object in zero-shot format.
+        A zero-shot task configuration with only the relevant windows for zero-shot labeling.
     """
-
-    if labeler_cfg:
-        raise NotImplementedError("This is not supported yet.")
 
     prediction_time_window_name = task_cfg.index_timestamp_window
     prediction_time_window_cfg = task_cfg.windows[prediction_time_window_name]
@@ -117,6 +107,37 @@ def convert_to_zero_shot(
         node.children = [n for n in node.children if n in allowed_nodes]
 
     return new_task_cfg
+
+
+def convert_to_zero_shot(
+    task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
+) -> ZeroShotTaskConfig:
+    """Converts the given task configuration to a zero-shot task configuration.
+
+    This function modifies the task configuration to ensure it is suitable for zero-shot labeling. This
+    includes both window/tree pruning and relationship modification per the labeler config.
+
+    Args:
+        task_cfg: The task configuration to convert.
+        labeler_cfg: The labeler configuration to use.
+
+    Returns:
+        A zero-shot task configuration with the relevant windows and relationships for zero-shot labeling.
+    """
+
+    zero_shot_cfg = _strip_to_rel_windows(task_cfg)
+
+    if labeler_cfg is None:
+        labeler_cfg = {}
+
+    if labeler_cfg.pop("remove_all_criteria", False):
+        for window in zero_shot_cfg.windows.values():
+            window.has = None
+
+    if labeler_cfg:
+        raise NotImplementedError("This is not supported yet.")
+
+    return zero_shot_cfg
 
 
 def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
