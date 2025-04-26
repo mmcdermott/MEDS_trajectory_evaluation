@@ -228,19 +228,6 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig) ->
     Raises:
         FileNotFoundError: If the specified file paths do not exist.
         ValueError: If the task configuration is invalid or cannot be resolved.
-
-    Examples:
-        >>> resolve_zero_shot_task_cfg(sample_ACES_cfg)
-        ZeroShotTaskConfig(predicates={'icu_admission': PlainPredicateConfig(code='ICU_ADMISSION', ...),
-                                       'icu_discharge': PlainPredicateConfig(code='ICU_DISCHARGE', ...),
-                                       'death': PlainPredicateConfig(code={'regex': 'MEDS_DEATH.*'}, ...),
-                                       'discharge_or_death': DerivedPredicateConfig(...)},
-                           trigger=EventConfig(predicate='icu_admission'),
-                           windows={'input': WindowConfig(...),
-                                    'gap': WindowConfig(...),
-                                    'target': WindowConfig(...)},
-                           label_window='target',
-                           index_timestamp_window='input')
     """
 
     orig_cfg = TaskExtractorConfig.load(task_cfg.criteria_fp, task_cfg.predicates_fp)
