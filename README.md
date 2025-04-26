@@ -446,6 +446,7 @@ This makes no difference as there are no post-label windows in this example.
 hospitalization.end; **Prediction Time**
 └── (+1 day, 0:00:00) gap.end (no admission, death)
     └── (+29 days, 0:00:00) target.end; **Label: Presence of admission**
+
 ```
 
 This is likely an improvement, as the censoring protection may complicate generation and reduce the

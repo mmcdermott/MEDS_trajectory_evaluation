@@ -151,6 +151,30 @@ def collapse_temporal_gap_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskC
     return task_cfg
 
 
+def remove_post_label_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskConfig:
+    """Removes all windows that are descendants of the label window end node.
+
+    This is useful for removing any censoring protection nodes that are not needed for zero-shot labeling.
+
+    Args:
+        task_cfg: The task configuration to modify.
+
+    Returns:
+        The modified task configuration with the post-label windows removed.
+    """
+
+    label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
+    label_window_node = task_cfg.window_nodes[label_window_node.node_name]
+
+    descendant_names = [n.node_name for n in label_window_node.descendants]
+
+    label_window_node.children = ()
+    for n in descendant_names:
+        task_cfg.window_nodes.pop(n, None)
+
+    return task_cfg
+
+
 def convert_to_zero_shot(
     task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
 ) -> ZeroShotTaskConfig:
@@ -181,6 +205,9 @@ def convert_to_zero_shot(
 
     if labeler_cfg.pop("collapse_temporal_gap_windows", False):
         zero_shot_cfg = collapse_temporal_gap_windows(zero_shot_cfg)
+
+    if labeler_cfg.pop("remove_post_label_windows", False):
+        zero_shot_cfg = remove_post_label_windows(zero_shot_cfg)
 
     if labeler_cfg:
         raise NotImplementedError("This is not supported yet.")
