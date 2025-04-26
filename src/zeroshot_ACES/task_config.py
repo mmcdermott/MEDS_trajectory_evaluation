@@ -4,6 +4,7 @@ import copy
 from io import StringIO
 
 from aces.config import TaskExtractorConfig
+from aces.types import TemporalWindowBounds, ToEventWindowBounds
 from bigtree import print_tree
 from omegaconf import DictConfig
 
@@ -85,6 +86,7 @@ def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
     new_root_node = new_task_cfg.window_nodes[new_root.node_name]
     new_root_node.name = prediction_time_window.node_name
     new_root_node.endpoint_expr = None
+    new_root_node.constraints = {}
 
     if prediction_time_window.root == "end":
         new_task_cfg.windows[prediction_time_window_name].has = None
@@ -109,6 +111,46 @@ def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
     return new_task_cfg
 
 
+def collapse_temporal_gap_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskConfig:
+    """Collapses the temporal gap windows in the task configuration between the prediction time and the label.
+
+    Args:
+        task_cfg: The task configuration to collapse.
+
+    Returns:
+        The collapsed task configuration with the temporal gap windows maximally collapsed.
+    """
+
+    label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
+    root_to_label = list(task_cfg.window_nodes[label_window_node.node_name].node_path)
+
+    label_to_root = root_to_label[::-1]
+
+    new_label_to_root = [label_to_root.pop(0)]
+
+    while label_to_root:
+        node = label_to_root[0]
+
+        if node.constraints:
+            break
+
+        match getattr(node, "endpoint_expr", None):
+            case ToEventWindowBounds() | None:
+                break
+            case TemporalWindowBounds() as time_bound:
+                label_to_root.pop(0)
+                new_label_to_root[-1].parent = node.parent
+                node.parent.children = tuple(n for n in node.parent.children if n != node)
+                if isinstance(new_label_to_root[-1].endpoint_expr, TemporalWindowBounds):
+                    new_label_to_root[-1].endpoint_expr.window_size += time_bound.window_size
+            case _ as other:
+                raise ValueError(f"Unexpected type {type(other)} for endpoint expr: {other}.")
+
+    new_label_to_root.extend(label_to_root)
+
+    return task_cfg
+
+
 def convert_to_zero_shot(
     task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
 ) -> ZeroShotTaskConfig:
@@ -129,10 +171,16 @@ def convert_to_zero_shot(
 
     if labeler_cfg is None:
         labeler_cfg = {}
+    labeler_cfg = copy.deepcopy(labeler_cfg)
 
     if labeler_cfg.pop("remove_all_criteria", False):
         for window in zero_shot_cfg.windows.values():
             window.has = None
+        for node in zero_shot_cfg.window_nodes.values():
+            node.constraints = {}
+
+    if labeler_cfg.pop("collapse_temporal_gap_windows", False):
+        zero_shot_cfg = collapse_temporal_gap_windows(zero_shot_cfg)
 
     if labeler_cfg:
         raise NotImplementedError("This is not supported yet.")
@@ -140,7 +188,7 @@ def convert_to_zero_shot(
     return zero_shot_cfg
 
 
-def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
+def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig) -> ZeroShotTaskConfig:
     """Resolves the task configuration for 0-shot prediction by removing past & (optionally) future criteria.
 
     Args:
@@ -148,7 +196,7 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig):
         labeler_cfg: The labeler configuration to use.
 
     Returns:
-        ???
+        A zero-shot task configuration with the relevant windows and relationships for zero-shot labeling.
 
     Raises:
         FileNotFoundError: If the specified file paths do not exist.
