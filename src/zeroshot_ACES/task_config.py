@@ -230,11 +230,17 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig) ->
         ValueError: If the task configuration is invalid or cannot be resolved.
 
     Examples:
-        >>> task_cfg = DictConfig({
-        ...     "criteria_fp": str(sample_task_criteria_fp), "predicates_fp": str(sample_predicates_fp)
-        ... })
-        >>> labeler_cfg = DictConfig({})
-        >>> resolve_zero_shot_task_cfg(task_cfg, labeler_cfg)
+        >>> resolve_zero_shot_task_cfg(sample_ACES_cfg)
+        ZeroShotTaskConfig(predicates={'icu_admission': PlainPredicateConfig(code='ICU_ADMISSION', ...),
+                                       'icu_discharge': PlainPredicateConfig(code='ICU_DISCHARGE', ...),
+                                       'death': PlainPredicateConfig(code={'regex': 'MEDS_DEATH.*'}, ...),
+                                       'discharge_or_death': DerivedPredicateConfig(...)},
+                           trigger=EventConfig(predicate='icu_admission'),
+                           windows={'input': WindowConfig(...),
+                                    'gap': WindowConfig(...),
+                                    'target': WindowConfig(...)},
+                           label_window='target',
+                           index_timestamp_window='input')
     """
 
     orig_cfg = TaskExtractorConfig.load(task_cfg.criteria_fp, task_cfg.predicates_fp)
