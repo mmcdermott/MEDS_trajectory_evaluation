@@ -464,3 +464,95 @@ efficiency.
 ```
 
 This makes no difference as there are no post-label windows in this example.
+
+### Examples of Labeling
+
+To see labeling in action, we'll work with the following configuration:
+
+```python
+>>> print_ACES(sample_ACES_cfg)
+trigger
+└── (+1 day, 0:00:00) input.end (no icu_admission, discharge_or_death); **Prediction Time**
+    └── (+1 day, 0:00:00) gap.end (no icu_admission, discharge_or_death)
+        └── (next discharge_or_death) target.end; **Label: Presence of death**
+
+```
+
+We'll also use the following generated trajectories:
+
+```python
+>>> for fn, df in sample_labeled_trajectories_dfs.items():
+...     print(f"Generated trajectory: {fn}")
+...     print(df)
+Generated trajectory: trajectory_0.parquet
+shape: (9, 5)
+┌─────────────────────────┬───────────────┬───────────────┬────────────┬─────────────────────────┐
+│ time                    ┆ code          ┆ numeric_value ┆ subject_id ┆ prediction_time         │
+│ ---                     ┆ ---           ┆ ---           ┆ ---        ┆ ---                     │
+│ datetime[μs, UTC]       ┆ str           ┆ f64           ┆ i32        ┆ datetime[μs, UTC]       │
+╞═════════════════════════╪═══════════════╪═══════════════╪════════════╪═════════════════════════╡
+│ 1993-01-01 12:00:00 UTC ┆ LAB_1         ┆ 1.0           ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-01-01 13:00:00 UTC ┆ LAB_2         ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-01-01 14:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-01-22 00:00:00 UTC ┆ MEDS_DEATH    ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-02-20 00:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+│ 1995-01-01 00:00:00 UTC ┆ LAB_23        ┆ 1.2           ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+│ 1999-01-01 13:00:00 UTC ┆ LAB_3         ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+│ 1999-01-01 14:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+│ 1999-01-04 14:00:00 UTC ┆ LAB_4         ┆ 1.1           ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+└─────────────────────────┴───────────────┴───────────────┴────────────┴─────────────────────────┘
+Generated trajectory: trajectory_1.parquet
+shape: (6, 5)
+┌─────────────────────────┬───────────────┬───────────────┬────────────┬─────────────────────────┐
+│ time                    ┆ code          ┆ numeric_value ┆ subject_id ┆ prediction_time         │
+│ ---                     ┆ ---           ┆ ---           ┆ ---        ┆ ---                     │
+│ datetime[μs, UTC]       ┆ str           ┆ f64           ┆ i32        ┆ datetime[μs, UTC]       │
+╞═════════════════════════╪═══════════════╪═══════════════╪════════════╪═════════════════════════╡
+│ 1993-01-01 12:00:00 UTC ┆ LAB_1         ┆ 1.0           ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-01-04 00:00:00 UTC ┆ MEDS_DEATH    ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1998-01-01 00:00:00 UTC ┆ LAB_1         ┆ 1.1           ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+│ 2000-01-01 00:00:00 UTC ┆ LAB_3         ┆ 1.2           ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+│ 1999-01-01 12:00:00 UTC ┆ ICU_ADMISSION ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+│ 1999-02-01 00:00:00 UTC ┆ MEDS_DEATH    ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+└─────────────────────────┴───────────────┴───────────────┴────────────┴─────────────────────────┘
+Generated trajectory: trajectory_2.parquet
+shape: (3, 5)
+┌─────────────────────────┬───────────────┬───────────────┬────────────┬─────────────────────────┐
+│ time                    ┆ code          ┆ numeric_value ┆ subject_id ┆ prediction_time         │
+│ ---                     ┆ ---           ┆ ---           ┆ ---        ┆ ---                     │
+│ datetime[μs, UTC]       ┆ str           ┆ null          ┆ i32        ┆ datetime[μs, UTC]       │
+╞═════════════════════════╪═══════════════╪═══════════════╪════════════╪═════════════════════════╡
+│ 1993-01-01 12:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 1993-01-01 13:00:00 UTC ┆ ICU_ADMISSION ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+│ 2005-01-01 00:00:00 UTC ┆ MEDS_DEATH    ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+└─────────────────────────┴───────────────┴───────────────┴────────────┴─────────────────────────┘
+
+```
+
+What labels do we get if we run the labeling function on these with various relaxations of our config? To see,
+first we need to import the label function:
+
+```python
+>>> from zeroshot_ACES.label import label_trajectories
+
+```
+
+#### 1. No Relaxations
+
+```python
+>>> for fn, df in sample_labeled_trajectories_dfs.items():
+...     print(f"Labels for {fn}:")
+...     print(label_trajectories(df, convert_to_zero_shot(sample_ACES_cfg)))
+Labels for trajectory_0.parquet
+shape: (3, 5)
+┌────────────┬─────────────────────────┬───────┬──────────────┬───────┐
+│ subject_id ┆ prediction_time         ┆ valid ┆ determinable ┆ label │
+│ ---        ┆ ---                     ┆ ---   ┆ ---          ┆ ---   │
+│ i32        ┆ datetime[μs, UTC]       ┆ bool  ┆ bool         ┆ bool  │
+╞════════════╪═════════════════════════╪═══════╪══════════════╪═══════╡
+│ 1          ┆ 1993-01-01 00:00:00 UTC ┆ False ┆ null         ┆ null  │
+│ 1          ┆ 1993-01-20 00:00:00 UTC ┆ True  ┆ True         ┆ False │
+│ 2          ┆ 1999-01-01 00:00:00 UTC ┆ False ┆ null         ┆ null  │
+└────────────┴─────────────────────────┴───────┴──────────────┴───────┘
+
+```

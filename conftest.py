@@ -182,9 +182,9 @@ def sample_labeled_trajectories(
 
 
 @pytest.fixture
-def sample_labeled_trajectories_on_disk(
+def sample_labeled_trajectories_dfs(
     sample_labeled_trajectories: dict[tuple[int, datetime], list[LabeledTrajectory]],
-) -> Path:
+) -> dict[str, pl.DataFrame]:
     df_parts = defaultdict(list)
 
     for (subject_id, prediction_time), labeled_trajectories in sample_labeled_trajectories.items():
@@ -196,11 +196,16 @@ def sample_labeled_trajectories_on_disk(
             )
             df_parts[fn].append(trajectory_df)
 
-    dfs = {k: pl.concat(dfs, how="vertical_relaxed") for k, dfs in df_parts.items()}
+    return {k: pl.concat(dfs, how="vertical_relaxed") for k, dfs in df_parts.items()}
 
+
+@pytest.fixture
+def sample_labeled_trajectories_on_disk(
+    sample_labeled_trajectories_dfs: dict[str, pl.DataFrame],
+) -> Path:
     with tempfile.TemporaryDirectory() as tempdir:
         root = Path(tempdir)
-        for fn, df in dfs.items():
+        for fn, df in sample_labeled_trajectories_dfs.items():
             df.write_parquet(root / fn, use_pyarrow=True)
 
         yield root
@@ -316,9 +321,11 @@ def _setup_doctest_namespace(
     sample_task_criteria_fp: Path,
     sample_predicates_fp: Path,
     sample_ACES_cfg: TaskExtractorConfig,
+    sample_labeled_trajectories_dfs: dict[str, pl.DataFrame],
 ) -> None:
     doctest_namespace.update(
         {
+            "sample_labeled_trajectories_dfs": sample_labeled_trajectories_dfs,
             "sample_ACES_cfg": sample_ACES_cfg,
             "Path": Path,
             "sample_task_criteria_cfg": sample_task_criteria_cfg,

@@ -9,7 +9,7 @@ import polars as pl
 from MEDS_transforms.mapreduce.mapper import map_over
 from omegaconf import DictConfig
 
-from .label import label_for_trajectories
+from .label import label_trajectories
 from .task_config import resolve_zero_shot_task_cfg
 from .utils import get_in_out_fps, hash_based_seed
 
@@ -31,7 +31,7 @@ def label(cfg: DictConfig):
 
     map_over(
         in_out_fps,
-        partial(label_for_trajectories, zero_shot_task_cfg=zero_shot_task_cfg),
+        partial(label_trajectories, zero_shot_task_cfg=zero_shot_task_cfg),
         read_fn=partial(pl.read_parquet, use_pyarrow=True, glob=False),
         write_fn=partial(pl.DataFrame.write_parquet, use_pyarrow=True),
     )

@@ -3,7 +3,7 @@ import polars as pl
 from .task_config import ZeroShotTaskConfig
 
 
-def label_for_trajectories(
+def label_trajectories(
     trajectories: pl.DataFrame,
     zero_shot_task_cfg: ZeroShotTaskConfig,
 ) -> pl.DataFrame:
@@ -16,5 +16,7 @@ def label_for_trajectories(
     Returns:
         A dataframe with the labels each trajectory evaluates to for the given config.
     """
+
+    # new_subj_id = pl.struct(subject_id_field, prediction_time_field)
 
     raise NotImplementedError("This is a placeholder for the actual prediction code.")
