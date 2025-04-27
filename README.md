@@ -540,19 +540,44 @@ first we need to import the label function:
 #### 1. No Relaxations
 
 ```python
+>>> print_ACES(convert_to_zero_shot(sample_ACES_cfg))
+input.end; **Prediction Time**
+└── (+1 day, 0:00:00) gap.end (no icu_admission, discharge_or_death)
+    └── (next discharge_or_death) target.end; **Label: Presence of death**
 >>> for fn, df in sample_labeled_trajectories_dfs.items():
 ...     print(f"Labels for {fn}:")
 ...     print(label_trajectories(df, convert_to_zero_shot(sample_ACES_cfg)))
-Labels for trajectory_0.parquet
+Labels for trajectory_0.parquet:
 shape: (3, 5)
 ┌────────────┬─────────────────────────┬───────┬──────────────┬───────┐
 │ subject_id ┆ prediction_time         ┆ valid ┆ determinable ┆ label │
 │ ---        ┆ ---                     ┆ ---   ┆ ---          ┆ ---   │
 │ i32        ┆ datetime[μs, UTC]       ┆ bool  ┆ bool         ┆ bool  │
 ╞════════════╪═════════════════════════╪═══════╪══════════════╪═══════╡
-│ 1          ┆ 1993-01-01 00:00:00 UTC ┆ False ┆ null         ┆ null  │
-│ 1          ┆ 1993-01-20 00:00:00 UTC ┆ True  ┆ True         ┆ False │
-│ 2          ┆ 1999-01-01 00:00:00 UTC ┆ False ┆ null         ┆ null  │
+│ 1          ┆ 1993-01-01 00:00:00 UTC ┆ false ┆ null         ┆ null  │
+│ 1          ┆ 1993-01-20 00:00:00 UTC ┆ true  ┆ true         ┆ false │
+│ 2          ┆ 1999-01-01 00:00:00 UTC ┆ false ┆ null         ┆ null  │
+└────────────┴─────────────────────────┴───────┴──────────────┴───────┘
+Labels for trajectory_1.parquet:
+shape: (3, 5)
+┌────────────┬─────────────────────────┬───────┬──────────────┬───────┐
+│ subject_id ┆ prediction_time         ┆ valid ┆ determinable ┆ label │
+│ ---        ┆ ---                     ┆ ---   ┆ ---          ┆ ---   │
+│ i32        ┆ datetime[μs, UTC]       ┆ bool  ┆ bool         ┆ bool  │
+╞════════════╪═════════════════════════╪═══════╪══════════════╪═══════╡
+│ 1          ┆ 1993-01-01 00:00:00 UTC ┆ true  ┆ true         ┆ true  │
+│ 1          ┆ 1993-01-20 00:00:00 UTC ┆ true  ┆ false        ┆ null  │
+│ 2          ┆ 1999-01-01 00:00:00 UTC ┆ false ┆ null         ┆ null  │
+└────────────┴─────────────────────────┴───────┴──────────────┴───────┘
+Labels for trajectory_2.parquet:
+shape: (2, 5)
+┌────────────┬─────────────────────────┬───────┬──────────────┬───────┐
+│ subject_id ┆ prediction_time         ┆ valid ┆ determinable ┆ label │
+│ ---        ┆ ---                     ┆ ---   ┆ ---          ┆ ---   │
+│ i32        ┆ datetime[μs, UTC]       ┆ bool  ┆ bool         ┆ bool  │
+╞════════════╪═════════════════════════╪═══════╪══════════════╪═══════╡
+│ 1          ┆ 1993-01-01 00:00:00 UTC ┆ false ┆ null         ┆ null  │
+│ 2          ┆ 1999-01-01 00:00:00 UTC ┆ true  ┆ true         ┆ true  │
 └────────────┴─────────────────────────┴───────┴──────────────┴───────┘
 
 ```

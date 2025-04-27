@@ -89,7 +89,7 @@ def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
     new_root_node.constraints = {}
 
     if prediction_time_window.root == "end":
-        new_task_cfg.windows[prediction_time_window_name].has = None
+        new_task_cfg.windows[prediction_time_window_name].has = {}
 
     new_task_cfg.window_tree = new_root_node
 
@@ -199,7 +199,7 @@ def convert_to_zero_shot(
 
     if labeler_cfg.pop("remove_all_criteria", False):
         for window in zero_shot_cfg.windows.values():
-            window.has = None
+            window.has = {}
         for node in zero_shot_cfg.window_nodes.values():
             node.constraints = {}
 
