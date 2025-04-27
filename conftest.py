@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
@@ -12,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 from aces.config import TaskExtractorConfig
+from meds import prediction_time_field, subject_id_field
 from MEDS_transforms.utils import print_directory_contents
 from omegaconf import DictConfig, OmegaConf
 
@@ -41,12 +43,12 @@ class Label(NamedTuple):
 
 class LabeledTrajectory(NamedTuple):
     trajectory: pl.DataFrame
-    labels_by_relaxation: dict[set[str], Label]
+    labels_by_relaxation: dict[frozenset[str], Label]
 
 
 @pytest.fixture
 def sample_labeled_trajectories(
-    task_schema: pl.DataFrame,
+    sample_task_schema: pl.DataFrame,
 ) -> dict[tuple[int, datetime], list[LabeledTrajectory]]:
     """A fixture that provides sample generated trajectories for testing.
 
@@ -77,9 +79,9 @@ def sample_labeled_trajectories(
                     }
                 ),
                 {
-                    {}: Label(valid=False),
-                    {"remove_all_criteria"}: Label(label=True),
-                    {"remove_all_criteria", "collapse_temporal_gap_windows"}: Label(label=False),
+                    frozenset(): Label(valid=False),
+                    frozenset({"remove_all_criteria"}): Label(label=True),
+                    frozenset({"remove_all_criteria", "collapse_temporal_gap_windows"}): Label(label=False),
                 },
             ),
             LabeledTrajectory(
@@ -90,7 +92,7 @@ def sample_labeled_trajectories(
                         "numeric_value": [1.0, None],
                     }
                 ),
-                {set(): Label(label=True)},  # Label is always true
+                {frozenset(): Label(label=True)},  # Label is always true
             ),
             LabeledTrajectory(
                 pl.DataFrame(
@@ -101,9 +103,9 @@ def sample_labeled_trajectories(
                     }
                 ),
                 {
-                    {}: Label(valid=False),  # There is a discharge in the gap window.
-                    {"remove_all_criteria"}: Label(determinable=False),
-                    {"remove_all_criteria", "collapse_temporal_gap_windows"}: Label(label=False),
+                    frozenset(): Label(valid=False),  # There is a discharge in the gap window.
+                    frozenset({"remove_all_criteria"}): Label(determinable=False),
+                    frozenset({"remove_all_criteria", "collapse_temporal_gap_windows"}): Label(label=False),
                 },
             ),
         ],
@@ -118,7 +120,7 @@ def sample_labeled_trajectories(
                         "numeric_value": [None, 1.2],
                     }
                 ),
-                {set(): Label(label=False)},  # Label is always false.
+                {frozenset(): Label(label=False)},  # Label is always false.
             ),
             LabeledTrajectory(
                 pl.DataFrame(
@@ -128,12 +130,12 @@ def sample_labeled_trajectories(
                         "numeric_value": [1.1, 1.2],
                     }
                 ),
-                {set(): Label(determinable=False)},  # Determinable will always be false here.
+                {frozenset(): Label(determinable=False)},  # Determinable will always be false here.
             ),
             LabeledTrajectory(
                 # Trajectory 3 is empty here, to assess robustness.
                 pl.DataFrame({"time": [], "code": [], "numeric_value": []}),
-                {set(): Label(determinable=False)},  # Determinable will always be false here.
+                {frozenset(): Label(determinable=False)},  # Determinable will always be false here.
             ),
         ],
         (2, datetime(1999, 1, 1, tzinfo=UTC)): [
@@ -150,9 +152,9 @@ def sample_labeled_trajectories(
                     }
                 ),
                 {
-                    set(): Label(valid=False),
-                    {"remove_all_criteria"}: Label(determinable=False),
-                    {"remove_all_criteria", "collapse_temporal_gap_windows"}: Label(label=False),
+                    frozenset(): Label(valid=False),
+                    frozenset({"remove_all_criteria"}): Label(determinable=False),
+                    frozenset({"remove_all_criteria", "collapse_temporal_gap_windows"}): Label(label=False),
                 },
             ),
             LabeledTrajectory(
@@ -163,7 +165,7 @@ def sample_labeled_trajectories(
                         "numeric_value": [None, None],
                     }
                 ),
-                {set(): Label(valid=False), {"remove_all_criteria"}: Label(label=True)},
+                {frozenset(): Label(valid=False), frozenset({"remove_all_criteria"}): Label(label=True)},
             ),
             LabeledTrajectory(
                 pl.DataFrame(
@@ -173,10 +175,35 @@ def sample_labeled_trajectories(
                         "numeric_value": [None],
                     }
                 ),
-                {set(): Label(label=True)},
+                {frozenset(): Label(label=True)},
             ),
         ],
     }
+
+
+@pytest.fixture
+def sample_labeled_trajectories_on_disk(
+    sample_labeled_trajectories: dict[tuple[int, datetime], list[LabeledTrajectory]],
+) -> Path:
+    df_parts = defaultdict(list)
+
+    for (subject_id, prediction_time), labeled_trajectories in sample_labeled_trajectories.items():
+        for i, labeled_trajectory in enumerate(labeled_trajectories):
+            fn = f"trajectory_{i}.parquet"
+            trajectory_df = labeled_trajectory.trajectory.with_columns(
+                pl.lit(subject_id).alias(subject_id_field),
+                pl.lit(prediction_time).alias(prediction_time_field),
+            )
+            df_parts[fn].append(trajectory_df)
+
+    dfs = {k: pl.concat(dfs, how="vertical_relaxed") for k, dfs in df_parts.items()}
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        root = Path(tempdir)
+        for fn, df in dfs.items():
+            df.write_parquet(root / fn, use_pyarrow=True)
+
+        yield root
 
 
 @pytest.fixture

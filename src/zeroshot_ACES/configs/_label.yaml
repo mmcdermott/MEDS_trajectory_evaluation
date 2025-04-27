@@ -14,7 +14,9 @@ task:
 
 # Labels
 labeler:
-  drop_future_constraints: true
+  remove_all_criteria: False
+  collapse_temporal_gap_windows: False
+  remove_post_label_windows: False
 
 # Pipeline
 worker: 0
