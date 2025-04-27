@@ -12,8 +12,12 @@ pip install zeroshot_ACES
 ## 2. Run
 
 ```bash
-ZSACES_predict ...
+ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP"
 ```
+
+Optionally, you can add relaxations to the zero-shot labeling config via `labeler.remove_all_criteria=True`,
+`labeler.collapse_temporal_gap_windows=True`, or `labeler.remove_post_label_windows=true`. See below for
+examples of these in action.
 
 # Documentation
 
