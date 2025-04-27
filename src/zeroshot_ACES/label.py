@@ -1,9 +1,11 @@
 import polars as pl
 
+from .task_config import ZeroShotTaskConfig
+
 
 def label_for_trajectories(
     trajectories: pl.DataFrame,
-    zero_shot_task_cfg,
+    zero_shot_task_cfg: ZeroShotTaskConfig,
 ) -> pl.DataFrame:
     """Takes a dataframe of trajectories and a zero-shot task configuration and returns the labels.
 
