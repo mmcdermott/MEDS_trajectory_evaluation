@@ -32,6 +32,8 @@ ZSACES_predict ...
 | Target Window                   | The window in the ACES config over which the label is extracted. This is indicated via the `label` marker in the ACES config.                                                                                                                                                          |
 | Normal-form / Normalized Config | When in "normal-form" or "normalized", a config has an input window that ends with the prediction time and the prediction time node in the task config tree is an ancestor of both ends of the target window.                                                                          |
 | Relaxations                     | A configuration relaxation is a modification to the task config that removes constraints or simplifies the relationships between window endpoints. These are used to simplify or broaden the set of identified empricial labels during zero-shot prediction vs. task label extraction. |
+| valid                           | A trajectory is "valid" under a config when it does not indicate a sequence of measurements that would violate any inclsuion/exclusion criteria in the zero-shot task config.                                                                                                          |
+| determinable                    | A trajectory is "determinable" under a config if and only if it is both valid and contains valid realizations of all relevant windows in the config (e.g., we don't need to generate more).                                                                                            |
 
 ## Supported Config Relaxations
 
