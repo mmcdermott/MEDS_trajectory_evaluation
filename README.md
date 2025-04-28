@@ -1,5 +1,15 @@
 # Zero-shot ACES
 
+[![PyPI - Version](https://img.shields.io/pypi/v/zeroshot_ACES)](https://pypi.org/project/zeroshot_ACES/)
+![python](https://img.shields.io/badge/-Python_3.12-blue?logo=python&logoColor=white)
+[![codecov](https://codecov.io/gh/mmcdermott/zeroshot_ACES/graph/badge.svg?token=CPLS7DPPAK)](https://codecov.io/gh/mmcdermott/zeroshot_ACES)
+[![tests](https://github.com/mmcdermott/zeroshot_ACES/actions/workflows/tests.yaml/badge.svg)](https://github.com/mmcdermott/zeroshot_ACES/actions/workflows/tests.yml)
+[![code-quality](https://github.com/mmcdermott/zeroshot_ACES/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/zeroshot_ACES/actions/workflows/code-quality-main.yaml)
+[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
+[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/zeroshot_ACES#license)
+[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/zeroshot_ACES/pulls)
+[![contributors](https://img.shields.io/github/contributors/mmcdermott/zeroshot_ACES.svg)](https://github.com/mmcdermott/zeroshot_ACES/graphs/contributors)
+
 This package contains utilities for converting autoregressive, generated trajectories into probabilistic
 predictions for arbitrary ACES configuration files.
 
@@ -12,7 +22,8 @@ pip install zeroshot_ACES
 ## 2. Run
 
 ```bash
-ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP"
+ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
+    output_dir=$OUTPUT_DIR trajectories_dir=$TRAJECTORIES_DIR
 ```
 
 Optionally, you can add relaxations to the zero-shot labeling config via `labeler.remove_all_criteria=True`,
