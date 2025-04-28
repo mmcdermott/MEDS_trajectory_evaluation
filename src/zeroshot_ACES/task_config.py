@@ -175,6 +175,9 @@ def remove_post_label_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskConfi
     return task_cfg
 
 
+ALLOWED_RELAXATIONS = {"remove_all_criteria", "collapse_temporal_gap_windows", "remove_post_label_windows"}
+
+
 def convert_to_zero_shot(
     task_cfg: TaskExtractorConfig, labeler_cfg: DictConfig | None = None
 ) -> ZeroShotTaskConfig:
@@ -197,20 +200,20 @@ def convert_to_zero_shot(
         labeler_cfg = {}
     labeler_cfg = copy.deepcopy(labeler_cfg)
 
-    if labeler_cfg.pop("remove_all_criteria", False):
+    if labeler_cfg.keys() - ALLOWED_RELAXATIONS:
+        raise ValueError(f"Unexpected keys in labeler config: {labeler_cfg.keys() - ALLOWED_RELAXATIONS}")
+
+    if labeler_cfg.get("remove_all_criteria", False):
         for window in zero_shot_cfg.windows.values():
             window.has = {}
         for node in zero_shot_cfg.window_nodes.values():
             node.constraints = {}
 
-    if labeler_cfg.pop("collapse_temporal_gap_windows", False):
+    if labeler_cfg.get("collapse_temporal_gap_windows", False):
         zero_shot_cfg = collapse_temporal_gap_windows(zero_shot_cfg)
 
-    if labeler_cfg.pop("remove_post_label_windows", False):
+    if labeler_cfg.get("remove_post_label_windows", False):
         zero_shot_cfg = remove_post_label_windows(zero_shot_cfg)
-
-    if labeler_cfg:
-        raise NotImplementedError("This is not supported yet.")
 
     return zero_shot_cfg
 

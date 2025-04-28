@@ -23,10 +23,10 @@ def get_in_out_fps(trajectories_dir: Path, output_dir: Path):
         ...     fp_1.touch()
         ...     fp_2.touch()
         ...     in_out_fps = get_in_out_fps(trajectories_dir, output_dir)
-        ...     print([fp.relative_to(output_dir).as_posix() for fp in in_out_fps])
+        ...     print([fp.relative_to(output_dir).as_posix() for _, fp in in_out_fps])
         ['file1.parquet', 'nested/file2.parquet']
     """
-    return [output_dir / fp.relative_to(trajectories_dir) for fp in trajectories_dir.rglob("*.parquet")]
+    return [(fp, output_dir / fp.relative_to(trajectories_dir)) for fp in trajectories_dir.rglob("*.parquet")]
 
 
 def hash_based_seed(seed: int | None, worker: int | None) -> int:
