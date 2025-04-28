@@ -89,6 +89,7 @@ def get_predicates_and_anchor_realizations(
         The subtree anchor realizations and predicates extracted from the input trajectories.
 
     Examples:
+        >>> _ = pl.Config.set_tbl_rows(-1)
         >>> raw_trajectories = sample_labeled_trajectories_dfs["trajectory_0.parquet"]
         >>> raw_trajectories
         shape: (9, 5)
@@ -170,6 +171,18 @@ def get_predicates_and_anchor_realizations(
 
         reformatted_trajectories.write_parquet(data_fp.name, use_pyarrow=True)
         predicates_df = get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))
+
+    predicates_df = (
+        predicates_df.join(
+            subtree_anchor_realizations.rename({"subtree_anchor_timestamp": "timestamp"}),
+            on=[subject_id_field, "timestamp"],
+            coalesce=True,
+            how="full",
+            maintain_order="left",
+        )
+        .sort((subject_id_field, "timestamp"), maintain_order=True)
+        .fill_null(0)
+    )
 
     return subtree_anchor_realizations, predicates_df
 
