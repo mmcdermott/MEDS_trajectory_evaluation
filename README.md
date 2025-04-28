@@ -13,6 +13,10 @@
 This package contains utilities for converting autoregressive, generated trajectories into probabilistic
 predictions for arbitrary ACES configuration files.
 
+> [!WARNING]
+> This package is not yet working properly. The labeler outputs something different than what is shown at the
+> bottom of this README, and what is shown at the bottom of this README is believed to be correct.
+
 ## 1. Install
 
 ```bash
