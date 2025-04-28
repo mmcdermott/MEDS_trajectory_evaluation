@@ -1,9 +1,10 @@
 import tempfile
 
 import polars as pl
+from aces.config import TaskExtractorConfig
 from aces.extract_subtree import extract_subtree
 from aces.predicates import get_predicates_df
-from meds import prediction_time_field, subject_id_field, time_field
+from meds import prediction_time_field, subject_id_field
 from omegaconf import DictConfig
 
 from .task_config import ZeroShotTaskConfig
@@ -47,23 +48,130 @@ def get_input_subtree_anchor_realizations(raw_trajectories: pl.DataFrame) -> pl.
         │ ---                         ┆ ---                      │
         │ struct[2]                   ┆ datetime[μs, UTC]        │
         ╞═════════════════════════════╪══════════════════════════╡
-        │ {1,1993-01-01 00:00:00 UTC} ┆ 1993-01-01 12:00:00 UTC  │
-        │ {1,1993-01-20 00:00:00 UTC} ┆ 1993-02-20 00:00:00 UTC  │
-        │ {2,1999-01-01 00:00:00 UTC} ┆ 1999-01-01 13:00:00 UTC  │
+        │ {1,1993-01-01 00:00:00 UTC} ┆ 1993-01-01 00:00:00 UTC  │
+        │ {1,1993-01-20 00:00:00 UTC} ┆ 1993-01-20 00:00:00 UTC  │
+        │ {2,1999-01-01 00:00:00 UTC} ┆ 1999-01-01 00:00:00 UTC  │
         └─────────────────────────────┴──────────────────────────┘
     """
 
-    new_subj_id = pl.struct(subject_id_field, prediction_time_field)
+    # return (
+    #     raw_trajectories.with_row_index("__idx")
+    #     .filter(pl.col("__idx") == pl.col("__idx").min().over(subject_id_field, prediction_time_field))
+    #     .select(
+    #         new_subj_id.alias(subject_id_field),
+    #         pl.col(time_field).alias("subtree_anchor_timestamp"),
+    #     )
+    # )
+    return raw_trajectories.select(
+        pl.struct(subject_id_field, prediction_time_field).alias(subject_id_field),
+        pl.col(prediction_time_field).alias("subtree_anchor_timestamp"),
+    ).unique(maintain_order=True)
 
-    return (
-        raw_trajectories.with_row_index("__idx")
-        .filter(pl.col("__idx") == pl.col("__idx").min().over(subject_id_field, prediction_time_field))
-        .select(
-            new_subj_id.alias(subject_id_field),
-            pl.col(time_field).alias("subtree_anchor_timestamp"),
-            # pl.col(prediction_time_field).alias("subtree_anchor_timestamp")
-        )
-    )
+
+def get_predicates_and_anchor_realizations(
+    trajectories: pl.DataFrame,
+    task_cfg: TaskExtractorConfig,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Extracts predicates and subtree anchor realizations from the input trajectories.
+
+    Performs the following:
+      1. reformats the subject-ID and prediction-time inputs into a new subject ID for independent trajectory
+         labeling
+      2. extracts subtree anchor realizations given the prediction timestamps in the input trajectories
+      3. extracts predicates from the generated trajectories
+      4. merges the anchor realizations in with the predicates as needed.
+
+    Args:
+        trajectories: A Polars DataFrame containing the input trajectories.
+        zero_shot_task_cfg: The zero-shot task configuration to use for labeling.
+
+    Returns:
+        The subtree anchor realizations and predicates extracted from the input trajectories.
+
+    Examples:
+        >>> raw_trajectories = sample_labeled_trajectories_dfs["trajectory_0.parquet"]
+        >>> raw_trajectories
+        shape: (9, 5)
+        ┌─────────────────────────┬───────────────┬───────────────┬────────────┬─────────────────────────┐
+        │ time                    ┆ code          ┆ numeric_value ┆ subject_id ┆ prediction_time         │
+        │ ---                     ┆ ---           ┆ ---           ┆ ---        ┆ ---                     │
+        │ datetime[μs, UTC]       ┆ str           ┆ f64           ┆ i32        ┆ datetime[μs, UTC]       │
+        ╞═════════════════════════╪═══════════════╪═══════════════╪════════════╪═════════════════════════╡
+        │ 1993-01-01 12:00:00 UTC ┆ LAB_1         ┆ 1.0           ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+        │ 1993-01-01 13:00:00 UTC ┆ LAB_2         ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+        │ 1993-01-01 14:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+        │ 1993-01-22 00:00:00 UTC ┆ MEDS_DEATH    ┆ null          ┆ 1          ┆ 1993-01-01 00:00:00 UTC │
+        │ 1993-02-20 00:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+        │ 1995-01-01 00:00:00 UTC ┆ LAB_23        ┆ 1.2           ┆ 1          ┆ 1993-01-20 00:00:00 UTC │
+        │ 1999-01-01 13:00:00 UTC ┆ LAB_3         ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+        │ 1999-01-01 14:00:00 UTC ┆ ICU_DISCHARGE ┆ null          ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+        │ 1999-01-04 14:00:00 UTC ┆ LAB_4         ┆ 1.1           ┆ 2          ┆ 1999-01-01 00:00:00 UTC │
+        └─────────────────────────┴───────────────┴───────────────┴────────────┴─────────────────────────┘
+        >>> sample_ACES_cfg.predicates
+        {'icu_admission': PlainPredicateConfig(code='ICU_ADMISSION', ...),
+         'icu_discharge': PlainPredicateConfig(code='ICU_DISCHARGE', ...),
+         'death': PlainPredicateConfig(code={'regex': 'MEDS_DEATH.*'}, ...),
+         'discharge_or_death': DerivedPredicateConfig(expr='or(icu_discharge, death)', ...)}
+        >>> realizations, preds = get_predicates_and_anchor_realizations(raw_trajectories, sample_ACES_cfg)
+        >>> realizations
+        shape: (3, 2)
+        ┌─────────────────────────────┬──────────────────────────┐
+        │ subject_id                  ┆ subtree_anchor_timestamp │
+        │ ---                         ┆ ---                      │
+        │ struct[2]                   ┆ datetime[μs, UTC]        │
+        ╞═════════════════════════════╪══════════════════════════╡
+        │ {1,1993-01-01 00:00:00 UTC} ┆ 1993-01-01 00:00:00 UTC  │
+        │ {1,1993-01-20 00:00:00 UTC} ┆ 1993-01-20 00:00:00 UTC  │
+        │ {2,1999-01-01 00:00:00 UTC} ┆ 1999-01-01 00:00:00 UTC  │
+        └─────────────────────────────┴──────────────────────────┘
+        >>> preds
+        shape: (12, 6)
+        ┌───────────────┬─────────────────────┬───────────────┬───────────────┬───────┬────────────────────┐
+        │ subject_id    ┆ timestamp           ┆ icu_admission ┆ icu_discharge ┆ death ┆ discharge_or_death │
+        │ ---           ┆ ---                 ┆ ---           ┆ ---           ┆ ---   ┆ ---                │
+        │ struct[2]     ┆ datetime[μs, UTC]   ┆ i64           ┆ i64           ┆ i64   ┆ i64                │
+        ╞═══════════════╪═════════════════════╪═══════════════╪═══════════════╪═══════╪════════════════════╡
+        │ {1,1993-01-01 ┆ 1993-01-01 00:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-01 ┆ 1993-01-01 12:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-01 ┆ 1993-01-01 13:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-01 ┆ 1993-01-01 14:00:00 ┆ 0             ┆ 1             ┆ 0     ┆ 1                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-01 ┆ 1993-01-22 00:00:00 ┆ 0             ┆ 0             ┆ 1     ┆ 1                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-20 ┆ 1993-01-20 00:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-20 ┆ 1993-02-20 00:00:00 ┆ 0             ┆ 1             ┆ 0     ┆ 1                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {1,1993-01-20 ┆ 1995-01-01 00:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {2,1999-01-01 ┆ 1999-01-01 00:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {2,1999-01-01 ┆ 1999-01-01 13:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {2,1999-01-01 ┆ 1999-01-01 14:00:00 ┆ 0             ┆ 1             ┆ 0     ┆ 1                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        │ {2,1999-01-01 ┆ 1999-01-04 14:00:00 ┆ 0             ┆ 0             ┆ 0     ┆ 0                  │
+        │ 00:00:00 UTC} ┆ UTC                 ┆               ┆               ┆       ┆                    │
+        └───────────────┴─────────────────────┴───────────────┴───────────────┴───────┴────────────────────┘
+    """
+
+    subtree_anchor_realizations = get_input_subtree_anchor_realizations(trajectories)
+
+    reformatted_trajectories = trajectories.with_columns(
+        pl.struct(subject_id_field, prediction_time_field).alias(subject_id_field)
+    ).drop(prediction_time_field)
+
+    with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
+        # TODO: This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
+        # dataframe directly.
+
+        reformatted_trajectories.write_parquet(data_fp.name, use_pyarrow=True)
+        predicates_df = get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))
+
+    return subtree_anchor_realizations, predicates_df
 
 
 def label_trajectories(
@@ -80,29 +188,9 @@ def label_trajectories(
         A dataframe with the labels each trajectory evaluates to for the given config.
     """
 
-    new_subj_id = pl.struct(subject_id_field, prediction_time_field)
-
-    reformatted_trajectories = trajectories.select(
-        new_subj_id.alias(subject_id_field),
-        *[c for c in trajectories.columns if c not in {subject_id_field, prediction_time_field}],
+    subtree_anchor_realizations, predicates_df = get_predicates_and_anchor_realizations(
+        trajectories, zero_shot_task_cfg
     )
-
-    subtree_anchor_realizations = get_input_subtree_anchor_realizations(trajectories)
-
-    with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
-        # TODO: This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
-        # dataframe directly.
-
-        reformatted_trajectories.write_parquet(data_fp.name, use_pyarrow=True)
-
-        data_config = DictConfig(
-            {
-                "path": data_fp.name,
-                "standard": "meds",
-            }
-        )
-
-        predicates_df = get_predicates_df(zero_shot_task_cfg, data_config)
 
     label_window = zero_shot_task_cfg.label_window
     label_predicate = zero_shot_task_cfg.windows[label_window].label
