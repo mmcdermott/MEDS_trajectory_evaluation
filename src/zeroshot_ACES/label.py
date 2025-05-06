@@ -4,10 +4,14 @@ import polars as pl
 from aces.config import TaskExtractorConfig
 from aces.extract_subtree import extract_subtree
 from aces.predicates import get_predicates_df
-from meds import prediction_time_field, subject_id_field
+from meds import LabelSchema
 from omegaconf import DictConfig
 
 from .task_config import ZeroShotTaskConfig
+
+SUBJ_AND_PRED_TIME = pl.struct(LabelSchema.subject_id_name, LabelSchema.prediction_time_name).alias(
+    LabelSchema.subject_id_name
+)
 
 
 def get_input_subtree_anchor_realizations(raw_trajectories: pl.DataFrame) -> pl.DataFrame:
@@ -54,17 +58,9 @@ def get_input_subtree_anchor_realizations(raw_trajectories: pl.DataFrame) -> pl.
         └─────────────────────────────┴──────────────────────────┘
     """
 
-    # return (
-    #     raw_trajectories.with_row_index("__idx")
-    #     .filter(pl.col("__idx") == pl.col("__idx").min().over(subject_id_field, prediction_time_field))
-    #     .select(
-    #         new_subj_id.alias(subject_id_field),
-    #         pl.col(time_field).alias("subtree_anchor_timestamp"),
-    #     )
-    # )
     return raw_trajectories.select(
-        pl.struct(subject_id_field, prediction_time_field).alias(subject_id_field),
-        pl.col(prediction_time_field).alias("subtree_anchor_timestamp"),
+        SUBJ_AND_PRED_TIME,
+        pl.col(LabelSchema.prediction_time_name).alias("subtree_anchor_timestamp"),
     ).unique(maintain_order=True)
 
 
@@ -161,9 +157,9 @@ def get_predicates_and_anchor_realizations(
 
     subtree_anchor_realizations = get_input_subtree_anchor_realizations(trajectories)
 
-    reformatted_trajectories = trajectories.with_columns(
-        pl.struct(subject_id_field, prediction_time_field).alias(subject_id_field)
-    ).drop(prediction_time_field)
+    reformatted_trajectories = trajectories.with_columns(SUBJ_AND_PRED_TIME).drop(
+        LabelSchema.prediction_time_name
+    )
 
     with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
         # TODO: This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
@@ -175,12 +171,12 @@ def get_predicates_and_anchor_realizations(
     predicates_df = (
         predicates_df.join(
             subtree_anchor_realizations.rename({"subtree_anchor_timestamp": "timestamp"}),
-            on=[subject_id_field, "timestamp"],
+            on=[LabelSchema.subject_id_name, "timestamp"],
             coalesce=True,
             how="full",
             maintain_order="left",
         )
-        .sort((subject_id_field, "timestamp"), maintain_order=True)
+        .sort((LabelSchema.subject_id_name, "timestamp"), maintain_order=True)
         .fill_null(0)
     )
 
@@ -212,10 +208,10 @@ def label_trajectories(
 
     aces_results = (
         extract_subtree(zero_shot_task_cfg.window_tree, subtree_anchor_realizations, predicates_df)
-        .unnest(subject_id_field)
+        .unnest(LabelSchema.subject_id_name)
         .select(
-            subject_id_field,
-            prediction_time_field,
+            LabelSchema.subject_id_name,
+            LabelSchema.prediction_time_name,
             pl.lit(True).alias("valid"),
             label_col.is_not_null().alias("determinable"),
             pl.when(label_col.is_not_null()).then(label_col > 0).alias("label"),
@@ -225,23 +221,23 @@ def label_trajectories(
     none_lit = pl.lit(None, dtype=pl.Boolean)
 
     return (
-        subtree_anchor_realizations.unnest(subject_id_field)
+        subtree_anchor_realizations.unnest(LabelSchema.subject_id_name)
         .select(
-            subject_id_field,
-            prediction_time_field,
+            LabelSchema.subject_id_name,
+            LabelSchema.prediction_time_name,
             none_lit.alias("valid"),
             none_lit.alias("determinable"),
             none_lit.alias("label"),
         )
         .update(
             aces_results,
-            on=[subject_id_field, prediction_time_field],
+            on=[LabelSchema.subject_id_name, LabelSchema.prediction_time_name],
             how="left",
             maintain_order="left",
         )
         .select(
-            subject_id_field,
-            prediction_time_field,
+            LabelSchema.subject_id_name,
+            LabelSchema.prediction_time_name,
             pl.col("valid").fill_null(False).alias("valid"),
             pl.col("determinable"),
             pl.col("label"),
