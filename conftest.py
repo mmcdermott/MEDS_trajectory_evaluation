@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 from aces.config import TaskExtractorConfig
-from meds import prediction_time_field, subject_id_field
+from meds import LabelSchema
 from MEDS_transforms.utils import print_directory_contents
 from omegaconf import DictConfig, OmegaConf
 
@@ -191,8 +191,8 @@ def sample_labeled_trajectories_dfs(
         for i, labeled_trajectory in enumerate(labeled_trajectories):
             fn = f"trajectory_{i}.parquet"
             trajectory_df = labeled_trajectory.trajectory.with_columns(
-                pl.lit(subject_id).alias(subject_id_field),
-                pl.lit(prediction_time).alias(prediction_time_field),
+                pl.lit(subject_id).alias(LabelSchema.subject_id_name),
+                pl.lit(prediction_time).alias(LabelSchema.prediction_time_name),
             )
             df_parts[fn].append(trajectory_df)
 
