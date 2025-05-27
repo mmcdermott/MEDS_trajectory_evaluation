@@ -31,7 +31,7 @@ dev = ["pre-commit<4", "ruff"]
 tests = ["pytest", "pytest-cov"]
 
 [project.scripts]
-ZSACES_label = "zeroshot_ACES.__main__:label"
+ZSACES_label = "zeroshot_ACES.ACES_config_evaluation.__main__:label"
 
 [project.urls]
 Homepage = "https://github.com/mmcdermott/zeroshot_ACES"
