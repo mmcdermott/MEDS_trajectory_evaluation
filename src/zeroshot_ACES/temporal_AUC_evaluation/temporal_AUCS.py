@@ -361,10 +361,10 @@ def temporal_aucs(
         │ ---          ┆ ---  │
         │ duration[μs] ┆ f64  │
         ╞══════════════╪══════╡
-        │ 15d          ┆ 0.25 │
-        │ 10d          ┆ 0.75 │
-        │ 5d           ┆ 1.0  │
         │ 1d           ┆ null │
+        │ 5d           ┆ 1.0  │
+        │ 10d          ┆ 0.75 │
+        │ 15d          ┆ 0.25 │
         └──────────────┴──────┘
     """
 
@@ -384,7 +384,7 @@ def temporal_aucs(
         prob_dist_expr = pl.col("prob")
 
     return df_AUC(
-        with_probs.group_by("duration", "label")
+        with_probs.group_by("duration", "label", maintain_order=True)
         .agg(prob_dist_expr.sort().alias("prob"))
         .pivot(on="label", index="duration", values="prob", aggregate_function=None, maintain_order=True)
     )

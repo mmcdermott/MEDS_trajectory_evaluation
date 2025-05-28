@@ -1,12 +1,9 @@
-import tempfile
-
 import polars as pl
 from aces.config import TaskExtractorConfig
 from aces.extract_subtree import extract_subtree
-from aces.predicates import get_predicates_df
 from meds import LabelSchema
-from omegaconf import DictConfig
 
+from ..aces_utils import get_MEDS_predicates
 from .task_config import ZeroShotTaskConfig
 
 SUBJ_AND_PRED_TIME = pl.struct(LabelSchema.subject_id_name, LabelSchema.prediction_time_name).alias(
@@ -161,15 +158,9 @@ def get_predicates_and_anchor_realizations(
         LabelSchema.prediction_time_name
     )
 
-    with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
-        # TODO: This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
-        # dataframe directly.
-
-        reformatted_trajectories.write_parquet(data_fp.name, use_pyarrow=True)
-        predicates_df = get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))
-
     predicates_df = (
-        predicates_df.join(
+        get_MEDS_predicates(reformatted_trajectories, task_cfg)
+        .join(
             subtree_anchor_realizations.rename({"subtree_anchor_timestamp": "timestamp"}),
             on=[LabelSchema.subject_id_name, "timestamp"],
             coalesce=True,

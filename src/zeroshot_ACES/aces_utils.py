@@ -1,12 +1,16 @@
 """Utilities to work with ACES configuration objects more easily."""
 
+import tempfile
 from collections import defaultdict
 from datetime import timedelta
 from typing import Literal, NamedTuple
 
+import polars as pl
 from aces.config import TaskExtractorConfig, WindowConfig
+from aces.predicates import get_predicates_df
 from aces.types import TemporalWindowBounds, ToEventWindowBounds
 from bigtree import Node, yield_tree
+from omegaconf import DictConfig
 
 
 class ZeroShotTaskConfig(TaskExtractorConfig):
@@ -429,3 +433,22 @@ def _resolve_node(
         root_node = _get_referenced_node(task_cfg.windows, root_node)
 
     return root_node
+
+
+def get_MEDS_predicates(
+    MEDS_df: pl.DataFrame,
+    task_cfg: TaskExtractorConfig,
+) -> pl.DataFrame:
+    """Gets the predicate realizations for a MEDS dataframe.
+
+    TODO(mmd): This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
+    dataframe directly.
+
+    Args:
+        MEDS_df: The MEDS dataframe to get the predicates from.
+        task_cfg: The task configuration to use for the predicates.
+    """
+
+    with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
+        MEDS_df.write_parquet(data_fp.name, use_pyarrow=True)
+        return get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))

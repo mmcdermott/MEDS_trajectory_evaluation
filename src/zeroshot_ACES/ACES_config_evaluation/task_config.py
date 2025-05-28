@@ -8,7 +8,7 @@ from aces.types import TemporalWindowBounds, ToEventWindowBounds
 from bigtree import print_tree
 from omegaconf import DictConfig
 
-from .aces_utils import WindowNode, ZeroShotTaskConfig, _resolve_node
+from ..aces_utils import WindowNode, ZeroShotTaskConfig, _resolve_node
 
 
 def validate_task_cfg(task_cfg: TaskExtractorConfig):
