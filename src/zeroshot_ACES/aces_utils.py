@@ -7,7 +7,7 @@ from typing import Literal, NamedTuple
 
 import polars as pl
 from aces.config import TaskExtractorConfig, WindowConfig
-from aces.predicates import get_predicates_df
+from aces.predicates import PlainPredicateConfig, get_predicates_df
 from aces.types import TemporalWindowBounds, ToEventWindowBounds
 from bigtree import Node, yield_tree
 from omegaconf import DictConfig
@@ -452,3 +452,57 @@ def get_MEDS_predicates(
     with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
         MEDS_df.write_parquet(data_fp.name, use_pyarrow=True)
         return get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))
+
+
+def get_MEDS_plain_predicates(
+    MEDS_df: pl.DataFrame,
+    predicates: dict[str, PlainPredicateConfig],
+) -> pl.DataFrame:
+    """Gets the plain predicate realizations for a MEDS dataframe.
+
+    Args:
+        MEDS_df: The MEDS dataframe to get the predicates from.
+        predicates: A dictionary of ACES plain predicates to be extracted from the MEDS data.
+
+    Examples:
+        >>> MEDS_df = pl.DataFrame({
+        ...     'subject_id': [
+        ...         1, 1, 1, 1,
+        ...         2,
+        ...         3, 3, 3,
+        ...     ],
+        ...     'time': [
+        ...         datetime(2020, 1, 1), datetime(2022, 1, 2), datetime(2022, 1, 2), datetime(2022, 1, 4),
+        ...         datetime(2022, 1, 1),
+        ...         datetime(2001, 1, 1), datetime(2002, 1, 2), datetime(2002, 1, 3),
+        ...     ],
+        ...     'code': [
+        ...         'icd9//150.1', 'icd9//400', 'icd9//250.3', 'icd9//250.5',
+        ...         'icd9//250.2',
+        ...         'icd9//250.1', 'icd9//402', 'icd9//400',
+        ...     ],
+        ... })
+        >>> predicates = {
+        ...     '250.*': PlainPredicateConfig(code={"regex": "250.*"}),
+        ...     '400': PlainPredicateConfig(code="icd9//400"),
+        ... }
+        >>> get_MEDS_plain_predicates(MEDS_df, predicates)
+        shape: (8, 5)
+        ┌────────────┬─────────────────────┬─────────────┬───────┬───────┐
+        │ subject_id ┆ time                ┆ code        ┆ 250.* ┆ 400   │
+        │ ---        ┆ ---                 ┆ ---         ┆ ---   ┆ ---   │
+        │ i64        ┆ datetime[μs]        ┆ str         ┆ bool  ┆ bool  │
+        ╞════════════╪═════════════════════╪═════════════╪═══════╪═══════╡
+        │ 1          ┆ 2020-01-01 00:00:00 ┆ icd9//150.1 ┆ false ┆ false │
+        │ 1          ┆ 2022-01-02 00:00:00 ┆ icd9//400   ┆ false ┆ true  │
+        │ 1          ┆ 2022-01-02 00:00:00 ┆ icd9//250.3 ┆ true  ┆ false │
+        │ 1          ┆ 2022-01-04 00:00:00 ┆ icd9//250.5 ┆ true  ┆ false │
+        │ 2          ┆ 2022-01-01 00:00:00 ┆ icd9//250.2 ┆ true  ┆ false │
+        │ 3          ┆ 2001-01-01 00:00:00 ┆ icd9//250.1 ┆ true  ┆ false │
+        │ 3          ┆ 2002-01-02 00:00:00 ┆ icd9//402   ┆ false ┆ false │
+        │ 3          ┆ 2002-01-03 00:00:00 ┆ icd9//400   ┆ false ┆ true  │
+        └────────────┴─────────────────────┴─────────────┴───────┴───────┘
+    """
+
+    predicate_exprs = {n: (p.MEDS_eval_expr() > 0) for n, p in predicates.items()}
+    return MEDS_df.with_columns(**predicate_exprs)
