@@ -74,4 +74,4 @@ select = [
 "__init__.py" = ["F401"]  # Unused imports in __init__ files
 
 [tool.ruff.lint.pep8-naming]
-extend-ignore-names = ["*MEDS*", "*ACES*", "*AUC*"]
+extend-ignore-names = ["*MEDS*", "*ACES*", "*AUC*", "*F*", "*T*"]
