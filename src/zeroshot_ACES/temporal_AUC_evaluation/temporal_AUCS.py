@@ -489,7 +489,8 @@ def temporal_aucs(
     df = pl.concat(dfs_by_task, how="vertical")
 
     if AUC_dist_approx > 0:
-        prob_dist_expr = pl.col("prob").sample(n=AUC_dist_approx, seed=seed)
+        n_expr = pl.min_horizontal(pl.col("prob").len(), AUC_dist_approx)
+        prob_dist_expr = pl.col("prob").sample(n=n_expr, seed=seed)
     else:
         prob_dist_expr = pl.col("prob")
 
@@ -510,4 +511,13 @@ def temporal_aucs(
         .sort("duration", descending=False)
     )
 
-    return aucs.select("duration", *[f"AUC/{task}" for task in tasks])  # re-order columns
+    out_cols = [f"AUC/{task}" for task in tasks]
+
+    included_cols = []
+    for c in out_cols:
+        if c not in aucs:
+            print(f"Warning: missing column {c}")
+        else:
+            included_cols.append(c)
+
+    return aucs.select("duration", *included_cols)  # re-order columns

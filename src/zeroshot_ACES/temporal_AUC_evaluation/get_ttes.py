@@ -257,3 +257,20 @@ def get_trajectory_tte(
         .group_by(LabelSchema.subject_id_name, LabelSchema.prediction_time_name, maintain_order=True)
         .agg(*tte_exprs)
     )
+
+def merge_pred_ttes(pred_tte_dfs: list[pl.DataFrame]) -> pl.DataFrame:
+    ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
+    df_chunks = [pred_tte_dfs[0].select(*ids)]
+    for i, df in enumerate(pred_tte_dfs):
+        df_chunks.append(df.drop(*ids).rename(lambda n: f"{n}/{i}"))
+
+    df = pl.concat(df_chunks, how="horizontal")
+
+    tasks = set(n.split("/")[1] for n in df.columns if n.endswith("/0"))
+
+    task_exprs = [
+        pl.concat_list(cs.starts_with(f"tte/{task}/")).alias(f"tte/{task}")
+        for task in tasks
+    ]
+
+    return df.select(*ids, *task_exprs)
