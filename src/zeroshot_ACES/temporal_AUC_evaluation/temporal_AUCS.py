@@ -433,7 +433,7 @@ def temporal_aucs(
     - For task B:
       * Duration 1 day: (False, 0.3333), (False, 0.0), (False, 0.5), for an AUC of null (no positive examples)
       * Duration 5 days: (False, 0.6667), (True, 0.0), (False, 0.5), for an AUC of 0.0
-      * Duration 10 days: (True, 0.6667), (True, 0.0), (False, 0.5), for an AUC of 0.3333
+      * Duration 10 days: (True, 0.6667), (True, 0.0), (False, 0.5), for an AUC of 0.5
       * Duration 15 days: (True, 0.6667), (True, 0.0), (True, 0.5), for an AUC of null (no negative examples)
 
         >>> temporal_aucs(true_tte, pred_ttes, duration_grid)
