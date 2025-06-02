@@ -14,7 +14,6 @@ import polars as pl
 import pytest
 from aces.config import TaskExtractorConfig
 from meds import LabelSchema
-from MEDS_transforms.utils import print_directory_contents
 from omegaconf import DictConfig, OmegaConf
 
 
@@ -335,7 +334,6 @@ def _setup_doctest_namespace(
             "DictConfig": DictConfig,
             "MagicMock": MagicMock,
             "patch": patch,
-            "print_directory_contents": print_directory_contents,
             "print_warnings": partial(print_warnings, caplog),
             "json": json,
             "pl": pl,
