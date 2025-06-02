@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "setuptools-scm>=8.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zeroshot_ACES"
+name = "MEDS_trajectory_evaluation"
 dynamic = ["version"]
 authors = [
   { name="Matthew McDermott", email="mattmcdermott8@gmail.com" },
@@ -31,11 +31,11 @@ dev = ["pre-commit<4", "ruff"]
 tests = ["pytest", "pytest-cov"]
 
 [project.scripts]
-ZSACES_label = "zeroshot_ACES.ACES_config_evaluation.__main__:label"
+ZSACES_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
 
 [project.urls]
-Homepage = "https://github.com/mmcdermott/zeroshot_ACES"
-Issues = "https://github.com/mmcdermott/zeroshot_ACES/issues"
+Homepage = "https://github.com/mmcdermott/MEDS_trajectory_evaluation"
+Issues = "https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues"
 
 [tool.pytest.ini_options]
 addopts = [

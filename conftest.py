@@ -4,7 +4,7 @@ import json
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -340,6 +340,7 @@ def _setup_doctest_namespace(
             "json": json,
             "pl": pl,
             "datetime": datetime,
+            "timedelta": timedelta,
             "tempfile": tempfile,
         }
     )

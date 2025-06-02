@@ -15,7 +15,7 @@ from .utils import get_in_out_fps, hash_based_seed
 
 logger = logging.getLogger(__name__)
 
-CONFIGS = files("zeroshot_ACES") / "configs"
+CONFIGS = files("MEDS_trajectory_evaluation") / "ACES_config_evaluation" / "configs"
 
 
 @hydra.main(version_base=None, config_path=str(CONFIGS), config_name="_label")

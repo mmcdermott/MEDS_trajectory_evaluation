@@ -1,6 +1,9 @@
 """Utilities to construct true and trajectory observed time-to-events for ACES predicates."""
 
+from collections.abc import Callable
+
 import polars as pl
+import polars.selectors as cs
 from aces.config import PlainPredicateConfig
 from meds import DataSchema, LabelSchema
 
@@ -258,19 +261,65 @@ def get_trajectory_tte(
         .agg(*tte_exprs)
     )
 
+
 def merge_pred_ttes(pred_tte_dfs: list[pl.DataFrame]) -> pl.DataFrame:
+    """Merges multiple predicted time-to-predicate DataFrames into one with a list column.
+
+    Args:
+        pred_tte_dfs: A list of DataFrames, each containing predicted time-to-predicate values for different
+            predicates, and identifier columns for subject ID and prediction time.
+
+    Returns:
+        A single DataFrame with the subject ID and prediction time columns, and a list column for each
+        predicate containing the predicted time-to-event values.
+
+    Examples:
+        >>> df_1 = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=5), timedelta(days=10), None],
+        ...     "tte/B": [timedelta(days=2), timedelta(days=3), timedelta(days=15)],
+        ... })
+        >>> df_2 = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=3), timedelta(days=1), timedelta(days=20)],
+        ...     "tte/B": [timedelta(days=10), timedelta(days=45), None],
+        ... })
+        >>> df_3 = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [None, timedelta(days=1), None],
+        ...     "tte/B": [timedelta(days=1), timedelta(days=3), timedelta(days=5)],
+        ... })
+        >>> merge_pred_ttes([df_1, df_2, df_3])
+        shape: (3, 4)
+        ┌────────────┬─────────────────────┬────────────────────┬────────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A              ┆ tte/B              │
+        │ ---        ┆ ---                 ┆ ---                ┆ ---                │
+        │ i64        ┆ datetime[μs]        ┆ list[duration[μs]] ┆ list[duration[μs]] │
+        ╞════════════╪═════════════════════╪════════════════════╪════════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ [5d, 3d, null]     ┆ [2d, 10d, 1d]      │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ [10d, 1d, 1d]      ┆ [3d, 45d, 3d]      │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ [null, 20d, null]  ┆ [15d, null, 5d]    │
+        └────────────┴─────────────────────┴────────────────────┴────────────────────┘
+    """
+
     ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
     df_chunks = [pred_tte_dfs[0].select(*ids)]
+
+    pfx = "tte/"
+    tasks = [c.removeprefix(pfx) for c in pred_tte_dfs[0].columns if c not in ids]
+
+    def add_suffix_fntr(sfx: str) -> Callable[[str], str]:
+        """Returns a function to add a suffix to a column name."""
+        return lambda n: f"{n}/{sfx}"
+
     for i, df in enumerate(pred_tte_dfs):
-        df_chunks.append(df.drop(*ids).rename(lambda n: f"{n}/{i}"))
+        df_chunks.append(df.drop(*ids).rename(add_suffix_fntr(i)))
 
     df = pl.concat(df_chunks, how="horizontal")
 
-    tasks = set(n.split("/")[1] for n in df.columns if n.endswith("/0"))
-
-    task_exprs = [
-        pl.concat_list(cs.starts_with(f"tte/{task}/")).alias(f"tte/{task}")
-        for task in tasks
-    ]
+    task_exprs = [pl.concat_list(cs.starts_with(f"tte/{task}/")).alias(f"tte/{task}") for task in tasks]
 
     return df.select(*ids, *task_exprs)
