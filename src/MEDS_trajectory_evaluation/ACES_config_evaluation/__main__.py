@@ -9,6 +9,7 @@ import polars as pl
 from MEDS_transforms.mapreduce.mapper import map_over
 from omegaconf import DictConfig
 
+from .aggregate import aggregate_predictions
 from .label import label_trajectories
 from .task_config import resolve_zero_shot_task_cfg
 from .utils import get_in_out_fps, hash_based_seed
@@ -35,3 +36,18 @@ def label(cfg: DictConfig):
         read_fn=partial(pl.read_parquet, use_pyarrow=True, glob=False),
         write_fn=partial(pl.DataFrame.write_parquet, use_pyarrow=True),
     )
+
+
+@hydra.main(version_base=None, config_path=str(CONFIGS), config_name="_aggregate")
+def aggregate(cfg: DictConfig):
+    dfs = []
+    for fp in Path(cfg.labels_dir).rglob("*.parquet"):
+        df = pl.read_parquet(fp, use_pyarrow=True)
+        dfs.append(df)
+
+    labels_df = pl.concat(dfs, how="vertical_relaxed") if dfs else pl.DataFrame()
+    preds = aggregate_predictions(labels_df, cfg.probabilities.undetermined)
+
+    out_fp = Path(cfg.output_fp)
+    out_fp.parent.mkdir(parents=True, exist_ok=True)
+    preds.write_parquet(out_fp, use_pyarrow=True)
