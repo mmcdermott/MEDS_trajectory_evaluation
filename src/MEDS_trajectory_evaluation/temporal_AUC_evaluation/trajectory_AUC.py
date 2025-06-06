@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import timedelta
 
 import polars as pl
 from aces.config import PlainPredicateConfig
