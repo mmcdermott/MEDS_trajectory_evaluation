@@ -22,7 +22,7 @@ pip install MEDS_trajectory_evaluation
 ## 2. Run
 
 ```bash
-ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
+MTE_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
     output_dir=$OUTPUT_DIR trajectories_dir=$TRAJECTORIES_DIR
 ```
 
