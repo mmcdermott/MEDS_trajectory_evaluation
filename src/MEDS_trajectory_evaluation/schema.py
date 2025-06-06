@@ -1,7 +1,6 @@
 import pyarrow as pa
 from flexible_schema import Required
 from meds import DataSchema
-from meds_evaluation.schema import PredictionSchema
 
 
 class GeneratedTrajectorySchema(DataSchema):

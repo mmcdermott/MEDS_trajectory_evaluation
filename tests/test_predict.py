@@ -22,7 +22,9 @@ def test_aggregate_runs(
 
         out_label = subprocess.run(cmd_label, shell=False, check=False, capture_output=True)
         label_err_lines = [f"Stdout: {out_label.stdout.decode()}", f"Stderr: {out_label.stderr.decode()}"]
-        assert out_label.returncode == 0, "\n".join([f"Expected return code 0; got {out_label.returncode}", *label_err_lines])
+        assert out_label.returncode == 0, "\n".join(
+            [f"Expected return code 0; got {out_label.returncode}", *label_err_lines]
+        )
 
         out_fp = Path(tmpdir) / "preds.parquet"
         cmd_agg = [

@@ -31,15 +31,10 @@ def aggregate_predictions(labels_df: pl.DataFrame, undetermined_probability: flo
     agg = (
         labels_df.group_by(LabelSchema.subject_id_name, LabelSchema.prediction_time_name)
         .agg(
-            pl.col("label")
-            .mean()
-            .cast(pl.Float32)
-            .alias(PredictionSchema.predicted_boolean_probability_name)
+            pl.col("label").mean().cast(pl.Float32).alias(PredictionSchema.predicted_boolean_probability_name)
         )
         .with_columns(
-            pl.col(PredictionSchema.predicted_boolean_probability_name).fill_null(
-                undetermined_probability
-            )
+            pl.col(PredictionSchema.predicted_boolean_probability_name).fill_null(undetermined_probability)
         )
         .sort(
             [LabelSchema.subject_id_name, LabelSchema.prediction_time_name],
