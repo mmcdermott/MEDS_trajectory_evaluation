@@ -24,9 +24,9 @@ def test_aggregate_runs(
         label_err_lines = [f"Stdout: {out_label.stdout.decode()}", f"Stderr: {out_label.stderr.decode()}"]
             "MTE_aggregate",
 
-        from meds_evaluation.schema import PredictionSchema
+        from meds_evaluation import schema as eval_schema
 
-        PredictionSchema.validate(df.to_arrow())
+        eval_schema.validate_binary_classification_schema(df)
             [f"Expected return code 0; got {out_label.returncode}", *label_err_lines]
         )
 
