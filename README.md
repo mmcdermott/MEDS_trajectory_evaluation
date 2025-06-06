@@ -645,3 +645,38 @@ shape: (2, 5)
 └────────────┴─────────────────────────┴───────┴──────────────┴───────┘
 
 ```
+
+## Temporal AUC Evaluation
+
+The `temporal_AUC_evaluation` package contains helpers for turning
+time-to-first-event observations into AUC summaries across multiple prediction
+horizons.
+
+### Helper functions
+
+- `get_raw_tte` and `get_trajectory_tte` extract time-to-event values for each
+    predicate from real datasets or generated trajectories.
+- `merge_pred_ttes` stacks multiple predicted TTE tables into list columns so
+    probability distributions can be derived per subject.
+- `add_labels_from_true_tte` converts true durations into binary labels for a
+    given horizon and `add_probs_from_pred_ttes` turns predicted durations into
+    probabilities of observing the event within that window.
+
+### Computing AUCs
+
+`temporal_aucs` wires these pieces together and returns a DataFrame indexed by
+duration with `AUC/<predicate>` columns detailing discrimination for each
+predicate at every horizon.
+
+```python
+>>> temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])  # doctest: +SKIP
+shape: (2, 3)
+┌──────────────┬────────┬────────┐
+│ duration     ┆ AUC/A  ┆ AUC/B │
+│ ---          ┆ ---    ┆ ---   │
+│ duration[μs] ┆ f64    ┆ f64   │
+╞══════════════╪════════╪═══════╡
+│ 1d           ┆ 0.65   ┆ 0.72  │
+│ 7d           ┆ 0.71   ┆ 0.80  │
+└──────────────┴────────┴────────┘
+```

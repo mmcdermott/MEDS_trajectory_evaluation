@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import timedelta
 
 import polars as pl
@@ -223,7 +223,12 @@ def get_grid(
             return seq
 
 
-def add_labels_from_true_tte(df: pl.DataFrame) -> pl.DataFrame:
+def add_labels_from_true_tte(
+    df: pl.DataFrame,
+    *,
+    offset: timedelta = timedelta(0),
+    offset_col: str | None = None,
+) -> pl.DataFrame:
     """Convert the true time-to-predicate values into a label for a given duration window.
 
     Given a dataframe with a set of columns prefaced with `tte/` containing the true time-to-predicate value
@@ -232,8 +237,10 @@ def add_labels_from_true_tte(df: pl.DataFrame) -> pl.DataFrame:
     are named `label/<n>` for each `tte/<n>` column in the input.
 
     Arguments:
-        df: A DataFrame with columns "tte/*" (a time-to-predicate value) and "duration"
-            (the duration for which the label should be computed).
+        df: A DataFrame with columns "tte/*" (a time-to-predicate value) and ``duration``
+            (the duration for which the label should be computed). ``offset`` sets a constant
+            offset from the prediction time. If ``offset_col`` is provided, its values are
+            added to ``offset`` on a per-row basis.
 
     Returns:
         A DataFrame with the same columns as the input except for `tte/*`, plus a new column "label/*"
@@ -258,16 +265,39 @@ def add_labels_from_true_tte(df: pl.DataFrame) -> pl.DataFrame:
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ false   ┆ true    │
         │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
         └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+        >>> add_labels_from_true_tte(df, offset=timedelta(days=3))
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ true    ┆ false   │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ true    ┆ false   │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
+        └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
     """
 
     tte_cols = cs.starts_with("tte/")
 
-    label_expr = (tte_cols <= pl.col("duration")).fill_null(False).name.map(_reprefix_fntr("label"))
+    start = pl.lit(offset)
+    if offset_col is not None:
+        start = start + pl.col(offset_col)
+    label_expr = (
+        ((tte_cols > start) & (tte_cols <= start + pl.col("duration")))
+        .fill_null(False)
+        .name.map(_reprefix_fntr("label"))
+    )
 
     return df.with_columns(label_expr).drop(tte_cols)
 
 
-def add_probs_from_pred_ttes(df: pl.DataFrame) -> pl.DataFrame:
+def add_probs_from_pred_ttes(
+    df: pl.DataFrame,
+    *,
+    offset: timedelta = timedelta(0),
+    offset_col: str | None = None,
+) -> pl.DataFrame:
     """Convert the list of predicted time-to-predicate values into a probability distribution.
 
     Given a dataframe with a column `tte_pred` containing lists of predicted time-to-predicate values and a
@@ -276,8 +306,10 @@ def add_probs_from_pred_ttes(df: pl.DataFrame) -> pl.DataFrame:
     or equal to the duration for each trajectory.
 
     Arguments:
-        df: A DataFrame with columns prefixed with "tte_pred/" (each a list of predicted time-to-predicate
-            values) and "duration" (the duration for which the probabilities should be computed).
+        df: A DataFrame with columns prefixed with ``tte_pred/`` (each a list of predicted
+            time-to-predicate values) and ``duration``. ``offset`` sets a constant offset from
+            the prediction time. If ``offset_col`` is provided, its values are added to ``offset``
+            on a per-row basis.
 
     Returns:
         A DataFrame with the same columns as the input except for `tte_pred/*`, plus new columns "prob/*"
@@ -310,16 +342,37 @@ def add_probs_from_pred_ttes(df: pl.DataFrame) -> pl.DataFrame:
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 1.0      ┆ 1.0      │
         │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 0.333333 ┆ 0.0      │
         └────────────┴─────────────────────┴──────────────┴──────────┴──────────┘
+        >>> add_probs_from_pred_ttes(df, offset=timedelta(days=3))
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬──────────┬──────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ prob/A   ┆ prob/B   │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---      ┆ ---      │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ f64      ┆ f64      │
+        ╞════════════╪═════════════════════╪══════════════╪══════════╪══════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 0.666667 ┆ 0.333333 │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 1.0      ┆ 0.5      │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 1.0      ┆ 0.666667 │
+        └────────────┴─────────────────────┴──────────────┴──────────┴──────────┘
     """
 
-    num_trajectories_within_duration = (
-        cs.starts_with("tte_pred/")
-        .list.sort(descending=False, nulls_last=True)
-        .explode()
+    tte_pred_cols = cs.starts_with("tte_pred/")
+
+    sorted_lists = tte_pred_cols.list.sort(descending=False, nulls_last=True)
+
+    offset_expr = pl.lit(offset)
+    if offset_col is not None:
+        offset_expr = offset_expr + pl.col(offset_col)
+
+    upper = (
+        sorted_lists.explode()
         .fill_null(pl.lit(timedelta.max))
-        .search_sorted(pl.col("duration"), side="right")
+        .search_sorted(offset_expr + pl.col("duration"), side="right")
     )
-    prob_expr = num_trajectories_within_duration / (cs.starts_with("tte_pred/").list.len())
+    lower = sorted_lists.explode().fill_null(pl.lit(timedelta.max)).search_sorted(offset_expr, side="left")
+
+    num_trajectories_within_duration = upper - lower
+
+    prob_expr = num_trajectories_within_duration / (tte_pred_cols.list.len())
 
     return (
         df.with_row_index("__idx")
@@ -334,6 +387,9 @@ def temporal_aucs(
     duration_grid: str | int | None | list[timedelta] = 10000,
     AUC_dist_approx: int = -1,
     seed: int = 0,
+    *,
+    offset: timedelta = timedelta(0),
+    exclude_history: bool | Collection[str] = False,
 ) -> pl.DataFrame:
     """Compute the AUC over different prediction windows for the first occurrence of a predicate.
 
@@ -356,6 +412,9 @@ def temporal_aucs(
             distribution. If -1, the full distribution is used. This can be useful for large datasets to
             reduce the cost of computing the AUC, but may result in a less accurate estimate.
         seed: The random seed to use for sampling the AUC distribution if `AUC_dist_approx` is greater than 0.
+        offset: Offset from the prediction time at which the evaluation window begins.
+        exclude_history: If ``True`` or an iterable of task names, rows where the subject has a historical
+            instance of the predicate prior to the prediction time are removed for the specified tasks.
 
     Examples:
         >>> duration_grid = [timedelta(days=1), timedelta(days=5), timedelta(days=10), timedelta(days=15)]
@@ -448,6 +507,37 @@ def temporal_aucs(
         │ 10d          ┆ 0.75  ┆ 0.5   │
         │ 15d          ┆ 0.25  ┆ null  │
         └──────────────┴───────┴───────┘
+        >>> temporal_aucs(true_tte, pred_ttes, duration_grid, offset=timedelta(days=2))
+        shape: (4, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 1d           ┆ null  ┆ null  │
+        │ 5d           ┆ 1.0   ┆ null  │
+        │ 10d          ┆ 0.25  ┆ 0.75  │
+        │ 15d          ┆ 0.25  ┆ 0.75  │
+        └──────────────┴───────┴───────┘
+        >>> true_tte_hist = true_tte.with_columns([
+        ...     pl.Series("history/A", [False, True, False]),
+        ...     pl.Series("history/B", [False, False, True]),
+        ... ])
+        >>> temporal_aucs(
+        ...     true_tte_hist,
+        ...     pred_ttes,
+        ...     [timedelta(days=5), timedelta(days=10)],
+        ...     exclude_history=True,
+        ... )
+        shape: (2, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 5d           ┆ 1.0   ┆ 0.0   │
+        │ 10d          ┆ 1.0   ┆ null  │
+        └──────────────┴───────┴───────┘
     """
 
     ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
@@ -472,19 +562,32 @@ def temporal_aucs(
 
     duration_grid = get_grid(joint.select(tte_cols | tte_pred_cols), duration_grid)
 
-    with_duration = joint.with_columns(pl.lit(duration_grid).alias("duration")).explode("duration")
-    with_labels = add_labels_from_true_tte(with_duration)
-    with_probs = add_probs_from_pred_ttes(with_labels)
+    with_duration = joint.with_columns(
+        pl.lit(duration_grid).alias("duration"),
+        pl.lit(offset).alias("offset"),
+    ).explode("duration")
+    with_labels = add_labels_from_true_tte(with_duration, offset_col="offset")
+    with_probs = add_probs_from_pred_ttes(with_labels, offset_col="offset")
 
-    dfs_by_task = [
-        with_probs.select(
-            *ids,
-            "duration",
-            pl.lit(task).alias("task"),
-            cs.ends_with(f"/{task}").name.map(lambda n: n.split("/")[0]),
+    if exclude_history:
+        exclude_set = set(tasks) if exclude_history is True else set(exclude_history)
+    else:
+        exclude_set = set()
+
+    dfs_by_task = []
+    for task in tasks:
+        df_task = with_probs
+        if task in exclude_set and f"history/{task}" in df_task.columns:
+            df_task = df_task.filter(~pl.col(f"history/{task}"))
+
+        dfs_by_task.append(
+            df_task.select(
+                *ids,
+                "duration",
+                pl.lit(task).alias("task"),
+                cs.ends_with(f"/{task}").name.map(lambda n: n.split("/")[0]),
+            )
         )
-        for task in tasks
-    ]
 
     df = pl.concat(dfs_by_task, how="vertical")
 

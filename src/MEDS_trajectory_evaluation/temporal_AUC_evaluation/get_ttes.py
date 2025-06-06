@@ -91,6 +91,8 @@ def get_raw_tte(
     MEDS_df: pl.DataFrame,
     index_df: pl.DataFrame,
     predicates: PREDICATES_T,
+    *,
+    include_history: bool = False,
 ) -> pl.DataFrame:
     """Extracts the time-to-predicate values for the given MEDS dataset, index dataframe, and predicates.
 
@@ -104,6 +106,9 @@ def get_raw_tte(
         A DataFrame in the same order as the index dataframe, with the subject ID and prediction times
         included, and with a column `tte/${predicate}` containing the time-to-first predicate for each
         predicate in the config.
+        If ``include_history`` is ``True`` an additional column ``history/${predicate}``
+        is included which indicates whether the subject had an instance of the predicate at or before the
+        prediction time.
 
     Examples:
         >>> MEDS_df = pl.DataFrame({
@@ -154,6 +159,19 @@ def get_raw_tte(
         │ 3          ┆ 2022-01-01 00:00:00 ┆ null         ┆ null         │
         │ 3          ┆ 2000-01-01 00:00:00 ┆ 366d         ┆ 733d         │
         └────────────┴─────────────────────┴──────────────┴──────────────┘
+        >>> get_raw_tte(MEDS_df, index_df, predicates, include_history=True)
+        shape: (5, 6)
+        ┌────────────┬─────────────────────┬───────────────┬─────────────┬──────────────┬──────────────┐
+        │ subject_id ┆ prediction_time     ┆ history/250.* ┆ history/400 ┆ tte/250.*    ┆ tte/400      │
+        │ ---        ┆ ---                 ┆ ---           ┆ ---         ┆ ---          ┆ ---          │
+        │ i64        ┆ datetime[μs]        ┆ bool          ┆ bool        ┆ duration[μs] ┆ duration[μs] │
+        ╞════════════╪═════════════════════╪═══════════════╪═════════════╪══════════════╪══════════════╡
+        │ 1          ┆ 2022-01-01 00:00:00 ┆ false         ┆ false       ┆ 2d           ┆ 1d           │
+        │ 1          ┆ 2022-01-03 01:00:00 ┆ true          ┆ true        ┆ 23h          ┆ null         │
+        │ 2          ┆ 2022-01-01 00:00:00 ┆ true          ┆ true        ┆ null         ┆ null         │
+        │ 3          ┆ 2022-01-01 00:00:00 ┆ true          ┆ true        ┆ null         ┆ null         │
+        │ 3          ┆ 2000-01-01 00:00:00 ┆ false         ┆ false       ┆ 366d         ┆ 733d         │
+        └────────────┴─────────────────────┴───────────────┴─────────────┴──────────────┴──────────────┘
     """
 
     df = get_all_predicate_times(MEDS_df, predicates).join(
@@ -182,9 +200,14 @@ def get_raw_tte(
         for name, time_expr in predicate_time_exprs.items()
     ]
 
+    history_exprs = []
+    if include_history:
+        history_exprs = [(pl.col(f"{name}/idx") > 0).alias(f"history/{name}") for name in predicates]
+
     return df.with_columns(*predicate_idx_exprs).select(
         LabelSchema.subject_id_name,
         LabelSchema.prediction_time_name,
+        *history_exprs,
         *predicate_tte_exprs,
     )
 
