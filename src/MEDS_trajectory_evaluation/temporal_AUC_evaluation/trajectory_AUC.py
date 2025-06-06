@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from datetime import timedelta
 
 import polars as pl
 from aces.config import PlainPredicateConfig
@@ -57,6 +57,8 @@ def temporal_auc_from_trajectory_files(
     duration_grid: str | int | None | list[timedelta] = 10000,
     AUC_dist_approx: int = -1,
     seed: int = 0,
+    offset: timedelta = timedelta(0),
+    exclude_history: bool | Sequence[str] = False,
 ) -> pl.DataFrame:
     """Compute temporal AUCs over a collection of trajectory files.
 
@@ -67,6 +69,10 @@ def temporal_auc_from_trajectory_files(
         duration_grid: Duration grid for :func:`temporal_aucs`.
         AUC_dist_approx: Distribution approximation size.
         seed: Random seed for subsampling.
+        offset: Offset from the prediction time at which the evaluation window begins.
+        exclude_history: If ``True`` or an iterable of task names, rows where the subject
+            has a historical instance of the predicate prior to the prediction time
+            are removed for the specified tasks.
 
     Returns:
         A dataframe containing the temporal AUCs for each predicate.
@@ -97,4 +103,6 @@ def temporal_auc_from_trajectory_files(
         duration_grid=duration_grid,
         AUC_dist_approx=AUC_dist_approx,
         seed=seed,
+        offset=offset,
+        exclude_history=exclude_history,
     )
