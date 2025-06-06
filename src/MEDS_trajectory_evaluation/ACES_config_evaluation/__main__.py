@@ -46,7 +46,7 @@ def aggregate(cfg: DictConfig):
         dfs.append(df)
 
     labels_df = pl.concat(dfs, how="vertical_relaxed") if dfs else pl.DataFrame()
-    preds = aggregate_predictions(labels_df, cfg.probabilities.undetermined)
+    preds = aggregate_predictions(labels_df, cfg.undetermined_probability)
 
     out_fp = Path(cfg.output_fp)
     out_fp.parent.mkdir(parents=True, exist_ok=True)

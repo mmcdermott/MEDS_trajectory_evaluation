@@ -13,7 +13,7 @@ def test_aggregate_runs(
     with tempfile.TemporaryDirectory() as tmpdir:
         labels_dir = Path(tmpdir) / "labels"
         cmd_label = [
-            "ZSACES_label",
+            "MTE_label",
             f"task.criteria_fp={sample_task_criteria_fp!s}",
             f"task.predicates_fp={sample_predicates_fp!s}",
             f"output_dir={labels_dir!s}",
@@ -22,7 +22,11 @@ def test_aggregate_runs(
 
         out_label = subprocess.run(cmd_label, shell=False, check=False, capture_output=True)
         label_err_lines = [f"Stdout: {out_label.stdout.decode()}", f"Stderr: {out_label.stderr.decode()}"]
-        assert out_label.returncode == 0, "\n".join(
+            "MTE_aggregate",
+
+        from meds_evaluation.schema import PredictionSchema
+
+        PredictionSchema.validate(df.to_arrow())
             [f"Expected return code 0; got {out_label.returncode}", *label_err_lines]
         )
 

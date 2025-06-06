@@ -8,8 +8,7 @@ labels_dir: ???
 output_fp: ???
 
 # Predictions
-probabilities:
-  undetermined: 0.5
+undetermined_probability: 0.0
 
 # Pipeline
 worker: 0

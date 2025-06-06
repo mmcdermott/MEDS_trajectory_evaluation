@@ -11,7 +11,7 @@ def test_labeling_runs(
     with tempfile.TemporaryDirectory() as tmpdir:
         out_dir = Path(tmpdir) / "output"
         cmd = [
-            "ZSACES_label",
+            "MTE_label",
             f"task.criteria_fp={sample_task_criteria_fp!s}",
             f"task.predicates_fp={sample_predicates_fp!s}",
             f"output_dir={out_dir!s}",
