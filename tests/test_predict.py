@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 
 import polars as pl
+from meds_evaluation.schema import PredictionSchema
 
 
 def test_aggregate_runs(
@@ -22,17 +23,13 @@ def test_aggregate_runs(
 
         out_label = subprocess.run(cmd_label, shell=False, check=False, capture_output=True)
         label_err_lines = [f"Stdout: {out_label.stdout.decode()}", f"Stderr: {out_label.stderr.decode()}"]
-            "MTE_aggregate",
-
-        from meds_evaluation import schema as eval_schema
-
-        eval_schema.validate_binary_classification_schema(df)
+        assert out_label.returncode == 0, "\n".join(
             [f"Expected return code 0; got {out_label.returncode}", *label_err_lines]
         )
 
         out_fp = Path(tmpdir) / "preds.parquet"
         cmd_agg = [
-            "ZSACES_aggregate",
+            "MTE_aggregate",
             f"labels_dir={labels_dir!s}",
             f"output_fp={out_fp!s}",
         ]
@@ -46,3 +43,5 @@ def test_aggregate_runs(
         assert out_fp.exists(), "\n".join(["Expected output file not found", *err_lines])
         df = pl.read_parquet(out_fp, use_pyarrow=True)
         assert df.height > 0, "\n".join(["Expected output dataframe to have rows", *err_lines])
+
+        PredictionSchema.validate(df.to_arrow())

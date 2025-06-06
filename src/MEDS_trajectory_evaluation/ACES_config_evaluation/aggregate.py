@@ -1,6 +1,6 @@
 import polars as pl
 from meds import LabelSchema
-from meds_evaluation import schema as eval_schema
+from meds_evaluation.schema import PredictionSchema
 
 
 def aggregate_predictions(labels_df: pl.DataFrame, undetermined_probability: float) -> pl.DataFrame:
@@ -13,43 +13,9 @@ def aggregate_predictions(labels_df: pl.DataFrame, undetermined_probability: flo
     Returns:
         DataFrame with columns ``subject_id``, ``prediction_time`` and ``predicted_boolean_probability``.
     """
-    if labels_df.is_empty():
-        return pl.DataFrame(
-            schema={
-                eval_schema.SUBJECT_ID_FIELD: pl.Int64,
-                eval_schema.PREDICTION_TIME_FIELD: pl.Datetime("us"),
-                eval_schema.BOOLEAN_VALUE_FIELD: pl.Boolean,
-                eval_schema.PREDICTED_BOOLEAN_PROBABILITY_FIELD: pl.Float64,
-            }
-        )
 
-    agg = (
-        labels_df.group_by(LabelSchema.subject_id_name, LabelSchema.prediction_time_name)
-        .agg(
-            pl.col("label")
-            .first()
-            .alias(eval_schema.BOOLEAN_VALUE_FIELD),
-            .alias(eval_schema.PREDICTED_BOOLEAN_PROBABILITY_FIELD),
-            pl.col(eval_schema.PREDICTED_BOOLEAN_PROBABILITY_FIELD).fill_null(
-            pl.col(LabelSchema.subject_id_name)
-            .cast(pl.Int64)
-            .alias(eval_schema.SUBJECT_ID_FIELD),
-            .cast(pl.Datetime("us"))
-            .alias(eval_schema.PREDICTION_TIME_FIELD),
-        )
-        .select(
-            eval_schema.SUBJECT_ID_FIELD,
-            eval_schema.PREDICTION_TIME_FIELD,
-            eval_schema.BOOLEAN_VALUE_FIELD,
-            eval_schema.PREDICTED_BOOLEAN_PROBABILITY_FIELD,
-        )
-            [eval_schema.SUBJECT_ID_FIELD, eval_schema.PREDICTION_TIME_FIELD],
-            pl.col(PredictionSchema.predicted_boolean_probability_name).fill_null(undetermined_probability)
-        )
-        .sort(
-            [LabelSchema.subject_id_name, LabelSchema.prediction_time_name],
-            maintain_order=True,
-        )
+    ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
+
+    return labels_df.group_by(*ids).agg(
+        pl.col("label").mean().alias(PredictionSchema.predicted_boolean_probability_name)
     )
-
-    return agg

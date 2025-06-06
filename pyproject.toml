@@ -10,8 +10,8 @@ authors = [
 ]
 description = "A framework for extracting labels from generated trajectories for arbitrary ACES configs."
 readme = "README.md"
-MTE_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
-MTE_aggregate = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:aggregate"
+requires-python = ">=3.11"
+classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -32,8 +32,8 @@ dev = ["pre-commit<4", "ruff"]
 tests = ["pytest", "pytest-cov", "pretty-print-directory"]
 
 [project.scripts]
-ZSACES_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
-ZSACES_aggregate = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:aggregate"
+MTE_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
+MTE_aggregate = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:aggregate"
 
 [project.urls]
 Homepage = "https://github.com/mmcdermott/MEDS_trajectory_evaluation"
