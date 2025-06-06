@@ -654,13 +654,13 @@ horizons.
 
 ### Helper functions
 
-* `get_raw_tte` and `get_trajectory_tte` extract time-to-event values for each
-  predicate from real datasets or generated trajectories.
-* `merge_pred_ttes` stacks multiple predicted TTE tables into list columns so
-  probability distributions can be derived per subject.
-* `add_labels_from_true_tte` converts true durations into binary labels for a
-  given horizon and `add_probs_from_pred_ttes` turns predicted durations into
-  probabilities of observing the event within that window.
+- `get_raw_tte` and `get_trajectory_tte` extract time-to-event values for each
+    predicate from real datasets or generated trajectories.
+- `merge_pred_ttes` stacks multiple predicted TTE tables into list columns so
+    probability distributions can be derived per subject.
+- `add_labels_from_true_tte` converts true durations into binary labels for a
+    given horizon and `add_probs_from_pred_ttes` turns predicted durations into
+    probabilities of observing the event within that window.
 
 ### Computing AUCs
 
