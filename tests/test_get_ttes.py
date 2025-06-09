@@ -93,5 +93,3 @@ def test_get_raw_tte_matches_manual(data):
             assert result[f"tte/{task}"][i] == expected_tte
             assert result_hist[f"tte/{task}"][i] == expected_tte
             assert result_hist[f"history/{task}"][i] == expected_hist
-
-
