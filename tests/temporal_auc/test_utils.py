@@ -1,5 +1,5 @@
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import polars as pl
 from aces.config import PlainPredicateConfig
@@ -7,8 +7,8 @@ from omegaconf import OmegaConf
 
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC import (
     _normalize_predicates,
-    merge_pred_ttes,
     get_trajectory_tte,
+    merge_pred_ttes,
     temporal_auc_from_trajectory_files,
 )
 
@@ -27,9 +27,7 @@ def test_normalize_predicates_from_mapping():
 
 def test_normalize_predicates_from_yaml(tmp_path: Path):
     yaml_path = tmp_path / "preds.yaml"
-    yaml_path.write_text(
-        "predicates:\n  X:\n    code: X\n  Y:\n    code: Y\n"
-    )
+    yaml_path.write_text("predicates:\n  X:\n    code: X\n  Y:\n    code: Y\n")
     result = _normalize_predicates(yaml_path)
     assert set(result) == {"X", "Y"}
     assert all(isinstance(cfg, PlainPredicateConfig) for cfg in result.values())
@@ -84,12 +82,14 @@ def test_get_trajectory_tte():
 
 def test_temporal_auc_from_trajectory_files(monkeypatch, tmp_path: Path):
     dt = datetime(2022, 1, 1)
-    MEDS_df = pl.DataFrame({
-        "subject_id": [1],
-        "prediction_time": [dt],
-        "time": [dt],
-        "code": ["A"],
-    })
+    MEDS_df = pl.DataFrame(
+        {
+            "subject_id": [1],
+            "prediction_time": [dt],
+            "time": [dt],
+            "code": ["A"],
+        }
+    )
 
     traj_df = MEDS_df.clone()
     traj_fp = tmp_path / "t.parquet"
@@ -97,7 +97,9 @@ def test_temporal_auc_from_trajectory_files(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(
         "MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC.get_trajectory_tte",
-        lambda df, preds: pl.DataFrame({"subject_id": [1], "prediction_time": [dt], "tte/A": [timedelta(days=1)]}),
+        lambda df, preds: pl.DataFrame(
+            {"subject_id": [1], "prediction_time": [dt], "tte/A": [timedelta(days=1)]}
+        ),
     )
     monkeypatch.setattr(
         "MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC.merge_pred_ttes",
@@ -105,7 +107,9 @@ def test_temporal_auc_from_trajectory_files(monkeypatch, tmp_path: Path):
     )
     monkeypatch.setattr(
         "MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC.get_raw_tte",
-        lambda MEDS_df, index_df, preds: pl.DataFrame({"subject_id": [1], "prediction_time": [dt], "tte/A": [timedelta(days=1)]}),
+        lambda MEDS_df, index_df, preds: pl.DataFrame(
+            {"subject_id": [1], "prediction_time": [dt], "tte/A": [timedelta(days=1)]}
+        ),
     )
     monkeypatch.setattr(
         "MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC.temporal_aucs",
