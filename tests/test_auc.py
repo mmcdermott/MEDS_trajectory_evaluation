@@ -5,21 +5,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import df_AUC
-
-
-def _manual_auc(true: list[float], false: list[float]) -> float | None:
-    """Compute AUC via exhaustive pair counting."""
-    if not true or not false:
-        return None
-    pairs = len(true) * len(false)
-    score = 0.0
-    for t in true:
-        for f in false:
-            if t > f:
-                score += 1.0
-            elif t == f:
-                score += 0.5
-    return score / pairs
+from tests.helpers import _manual_auc
 
 
 @st.composite
