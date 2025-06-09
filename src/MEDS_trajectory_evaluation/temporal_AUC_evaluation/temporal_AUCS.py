@@ -1,3 +1,4 @@
+import math
 from collections.abc import Callable, Collection
 from datetime import timedelta
 
@@ -200,12 +201,181 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
     return df.select(*ids, AUC.name.map(_reprefix_fntr("AUC")))
 
 
+def _parse_resolution(resolution: str) -> timedelta:
+    """Parse a simple duration specification.
+
+    Args:
+        resolution: String encoding of the resolution. Supported units are
+            ``"d"`` (days), ``"h"`` (hours), ``"m"`` (minutes), and ``"s"``
+            (seconds).
+
+    Returns:
+        The parsed duration.
+
+    Examples:
+        >>> _parse_resolution("5d")
+        datetime.timedelta(days=5)
+        >>> _parse_resolution("3h")
+        datetime.timedelta(seconds=10800)
+        >>> _parse_resolution("foo")
+        Traceback (most recent call last):
+            ...
+        ValueError: Invalid resolution specification: 'foo'
+
+    Note:
+        Uses :func:`pytimeparse.timeparse.parse` under the hood to support a
+        range of short duration strings.
+    """
+
+    from pytimeparse import parse
+
+    seconds = parse(resolution)
+    if seconds is None:
+        raise ValueError(f"Invalid resolution specification: {resolution!r}")
+
+    return timedelta(seconds=seconds)
+
+
+def _collect_durations(df: pl.DataFrame) -> pl.Series:
+    """Collect unique durations from ``tte`` columns.
+
+    Args:
+        df: DataFrame containing ``tte/`` or ``tte_pred/`` columns.
+
+    Returns:
+        A sorted series of the unique durations observed.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], []],
+        ... })
+        >>> _collect_durations(df)
+        shape: (3,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+        ]
+        >>> _collect_durations(pl.DataFrame({"x": [1, 2]}))
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    cols = df.select(cs.matches(r"^tte(?:_pred)?/"))
+    if cols.width == 0:
+        return pl.Series([], dtype=pl.Duration)
+
+    series_list: list[pl.Series] = []
+    for name in cols.columns:
+        s = cols[name]
+        if s.dtype == pl.List:
+            series_list.append(s.explode())
+        else:
+            series_list.append(s)
+
+    return pl.concat(series_list, how="vertical").drop_nulls().unique().sort()
+
+
 def resolution_grid(ttes_df: pl.DataFrame, resolution: str) -> pl.Series:
-    raise NotImplementedError
+    """Create a regularly spaced duration grid.
+
+    Args:
+        ttes_df: DataFrame containing ``tte`` information.
+        resolution: Resolution string, e.g. ``"1d"`` or ``"12h"``.
+
+    Returns:
+        A series of durations spaced according to ``resolution``.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=5)],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], [timedelta(days=4)], []],
+        ... })
+        >>> resolution_grid(df, "1d")
+        shape: (5,)
+        Series: '' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+            4d
+            5d
+        ]
+        >>> resolution_grid(pl.DataFrame({"x": [1]}), "1d")
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    delta = _parse_resolution(resolution)
+    durations = _collect_durations(ttes_df)
+    if durations.is_empty():
+        return pl.Series([], dtype=pl.Duration)
+
+    max_dur = durations.max()
+    if max_dur is None:
+        raise ValueError("No valid durations found in DataFrame")
+
+    n = math.ceil(max_dur / delta)
+    grid = [delta * i for i in range(1, n + 1)]
+    return pl.Series(grid)
 
 
 def random_grid(ttes_df: pl.DataFrame, n: int | None) -> pl.Series:
-    raise NotImplementedError
+    """Sample ``n`` durations from observed change points.
+
+    Args:
+        ttes_df: DataFrame containing ``tte`` information.
+        n: Number of samples to draw. If ``None`` all unique durations are
+            returned.
+
+    Returns:
+        A series of durations sampled without replacement.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=5)],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], [timedelta(days=4)], []],
+        ... })
+        >>> random_grid(df, None)
+        shape: (5,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+            4d
+            5d
+        ]
+        >>> random_grid(df, 3)
+        shape: (3,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            2d
+            3d
+            5d
+        ]
+        >>> random_grid(pl.DataFrame({"x": [1]}), None)
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    durations = _collect_durations(ttes_df)
+    if durations.is_empty():
+        return pl.Series([], dtype=pl.Duration)
+
+    if n is None:
+        return durations
+
+    n = min(n, len(durations))
+    return durations.sample(n=n, seed=0, with_replacement=False).sort()
 
 
 def get_grid(
