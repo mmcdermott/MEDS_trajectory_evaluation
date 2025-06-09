@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import warnings
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -90,13 +91,24 @@ class MEDSVocabulary:
     def strategy(
         draw,
         cls,
-        size: st.SearchStrategy[int] = st.integers(min_value=1, max_value=500),
-        frac_codes_with_values: st.SearchStrategy[float] = probabilities(),
-        frac_values_always_present: st.SearchStrategy[float] = probabilities(),
-        values_present_probabilities: st.SearchStrategy[float] = probabilities(),
-        code_occurrences_probs: st.SearchStrategy[float] = probabilities(),
+        size: st.SearchStrategy[int] | None = None,
+        frac_codes_with_values: st.SearchStrategy[float] | None = None,
+        frac_values_always_present: st.SearchStrategy[float] = None,
+        values_present_probabilities: st.SearchStrategy[float] = None,
+        code_occurrences_probs: st.SearchStrategy[float] = None,
     ) -> MEDSVocabulary:
         """Generate a random vocabulary of task codes."""
+
+        if size is None:
+            size = st.integers(min_value=1, max_value=500)
+        if frac_codes_with_values is None:
+            frac_codes_with_values = probabilities()
+        if frac_values_always_present is None:
+            frac_values_always_present = probabilities()
+        if values_present_probabilities is None:
+            values_present_probabilities = probabilities()
+        if code_occurrences_probs is None:
+            code_occurrences_probs = probabilities()
 
         n_codes = draw(size)
         codes = [f"Code_{i}" for i in range(n_codes)]
@@ -135,9 +147,10 @@ class MEDSEvent:
 
     @classmethod
     @st.composite
-    def strategy(
-        draw, cls, n_measurements: st.SearchStrategy[int] = st.integers(min_value=1, max_value=10), **kwargs
-    ) -> MEDSEvent:
+    def strategy(draw, cls, n_measurements: st.SearchStrategy[int] | None = None, **kwargs) -> MEDSEvent:
+        if n_measurements is None:
+            n_measurements = st.integers(min_value=1, max_value=10)
+
         return MEDSEvent(**kwargs, n_measurements=draw(n_measurements))
 
 
@@ -184,18 +197,27 @@ class MEDSSubject:
     def strategy(
         draw,
         cls,
-        n_static_measurements: st.SearchStrategy[int] = st.integers(min_value=0, max_value=10),
-        events: st.SearchStrategy[list[MEDSEvent]] = st.lists(MEDSEvent.strategy(), min_size=1, max_size=50),
-        init_time: st.Datetime = st.datetimes(
-            min_value=datetime(1980, 1, 1, tzinfo=UTC),
-            max_value=datetime(2023, 1, 1, tzinfo=UTC),
-        ),
-        time_between_events: st.Timedelta = st.timedeltas(
-            min_value=timedelta(seconds=1),
-            max_value=timedelta(days=365 * 10),  # up to 10 years
-        ),
+        n_static_measurements: st.SearchStrategy[int] | None = None,
+        events: st.SearchStrategy[list[MEDSEvent]] | None = None,
+        init_time: st.SearchStrategy[datetime] | None = None,
+        time_between_events: st.SearchStrategy[timedelta] | None = None,
         **kwargs,
     ) -> MEDSSubject:
+        if n_static_measurements is None:
+            n_static_measurements = st.integers(min_value=0, max_value=10)
+        if events is None:
+            events = st.lists(MEDSEvent.strategy(), min_size=1, max_size=50)
+        if init_time is None:
+            init_time = st.datetimes(
+                min_value=datetime(1980, 1, 1, tzinfo=UTC),
+                max_value=datetime(2023, 1, 1, tzinfo=UTC),
+            )
+        if time_between_events is None:
+            time_between_events = st.timedeltas(
+                min_value=timedelta(seconds=1),
+                max_value=timedelta(days=365 * 10),  # up to 10 years
+            )
+
         return cls(
             n_static_measurements=draw(n_static_measurements),
             events=draw(events),
@@ -222,9 +244,12 @@ class MEDSData:
     def strategy(
         draw,
         cls,
-        subjects: st.SearchStrategy[list[MEDSSubject]] = st.lists(
-            MEDSSubject.strategy(), min_size=1, max_size=20
-        ),
-        vocabulary: st.SearchStrategy[MEDSVocabulary] = MEDSVocabulary.strategy(),
+        subjects: st.SearchStrategy[list[MEDSSubject]] | None = None,
+        vocabulary: st.SearchStrategy[MEDSVocabulary] | None = None,
     ) -> MEDSData:
+        if subjects is None:
+            subjects = st.lists(MEDSSubject.strategy(), min_size=1, max_size=20)
+        if vocabulary is None:
+            vocabulary = MEDSVocabulary.strategy()
+
         return cls(subjects=draw(subjects), vocabulary=draw(vocabulary))

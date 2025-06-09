@@ -73,6 +73,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports in __init__ files
+"tests/*" = ["N804", "N805"] # Hypothesis changes this
 
 [tool.ruff.lint.pep8-naming]
 extend-ignore-names = ["*MEDS*", "*ACES*", "*AUC*", "*F*", "*T*"]
