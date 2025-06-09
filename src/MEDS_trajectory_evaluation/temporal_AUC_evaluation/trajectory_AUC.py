@@ -80,11 +80,11 @@ def temporal_auc_from_trajectory_files(
 
     preds = _normalize_predicates(predicates)
 
-    if isinstance(trajectories, str | Path):
-        t_root = Path(trajectories)
-        t_files = sorted(t_root.rglob("*.parquet")) if t_root.is_dir() else [t_root]
-    else:
-        t_files = [Path(p) for p in trajectories]
+    if not isinstance(trajectories, str | Path):
+        raise TypeError(f"Expected `trajectories` to be a string or Path, got {type(trajectories)}.")
+
+    t_root = Path(trajectories)
+    t_files = sorted(t_root.rglob("*.parquet")) if t_root.is_dir() else [t_root]
 
     pred_dfs = []
     index_dfs = []
