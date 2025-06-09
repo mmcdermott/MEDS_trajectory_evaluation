@@ -29,7 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pre-commit<4", "ruff"]
-tests = ["pytest", "pytest-cov", "pretty-print-directory", "hypothesis"]
+tests = ["pytest", "pytest-cov", "pretty-print-directory", "hypothesis", "scikit-learn"]
 
 [project.scripts]
 ZSACES_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
