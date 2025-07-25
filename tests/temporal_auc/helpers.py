@@ -232,6 +232,10 @@ class MEDSData:
     subjects: list[MEDSSubject]
     vocabulary: MEDSVocabulary
 
+    @property
+    def n_subjects(self) -> int:
+        return len(self.subjects)
+
     @st.composite
     def sample(draw, self) -> list[DataSchema]:
         all_measurements = []
