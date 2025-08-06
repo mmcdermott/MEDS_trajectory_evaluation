@@ -11,7 +11,7 @@ from MEDS_trajectory_evaluation.temporal_AUC_evaluation.get_ttes import get_raw_
 
 
 def _duration_tds(min_days: int, max_days: int) -> st.SearchStrategy[timedelta]:
-    return st.timedeltas(min_value=timedelta(days=min_days), max_value=timedelta(days=max_days))
+    return st.integers(min_value=min_days, max_value=max_days).map(lambda d: timedelta(days=d))
 
 
 @st.composite
@@ -43,7 +43,9 @@ def _raw_inputs(draw):
     index_rows = []
     for s in subjects:
         n_index = draw(st.integers(min_value=1, max_value=2))
-        pred_durations = draw(st.lists(_duration_tds(-2, 10), min_size=n_index, max_size=n_index))
+        pred_durations = draw(
+            st.lists(_duration_tds(-2, 10), min_size=n_index, max_size=n_index, unique=True)
+        )
         for d in sorted(pred_durations):
             index_rows.append({"subject_id": s, "prediction_time": base_time + d})
     index_df = pl.DataFrame(index_rows)
