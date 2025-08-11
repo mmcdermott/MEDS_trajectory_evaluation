@@ -477,17 +477,17 @@ def add_labels_from_true_tte(
         ...     ]
         ... })
         >>> add_labels_from_true_tte(df_with_followup, handle_censoring=True)
-        shape: (4, 5)
-        ┌────────────┬─────────────────────┬──────────────┬─────────┬─────────┐
-        │ subject_id ┆ prediction_time     ┆ duration     ┆ label/A ┆ label/B │
-        │ ---        ┆ ---                 ┆ ---          ┆ ---     ┆ ---     │
-        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ bool    ┆ bool    │
-        ╞════════════╪═════════════════════╪══════════════╪═════════╪═════════╡
-        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ true    ┆ true    │
-        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ false   ┆ true    │
-        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ null    ┆ false   │
-        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ null    ┆ null    │
-        └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+        shape: (4, 6)
+        ┌────────────┬─────────────────────┬──────────────┬───────────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ max_followup_time ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---               ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs]      ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ null    ┆ null    │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ null    ┆ null    │
+        └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
 
     Note the censoring behavior:
     - Subject 1: Event A at 5d, evaluated at 7d → True (event occurred within window)
@@ -496,17 +496,17 @@ def add_labels_from_true_tte(
     - Subject 4: No events, 15d follow-up, evaluated at 20d → null (censored, insufficient follow-up)
 
         >>> add_labels_from_true_tte(df_with_followup, handle_censoring=False)  # Legacy behavior
-        shape: (4, 5)
-        ┌────────────┬─────────────────────┬──────────────┬─────────┬─────────┐
-        │ subject_id ┆ prediction_time     ┆ duration     ┆ label/A ┆ label/B │
-        │ ---        ┆ ---                 ┆ ---          ┆ ---     ┆ ---     │
-        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ bool    ┆ bool    │
-        ╞════════════╪═════════════════════╪══════════════╪═════════╪═════════╡
-        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ true    ┆ true    │
-        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ false   ┆ true    │
-        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
-        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ false   ┆ false   │
-        └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+        shape: (4, 6)
+        ┌────────────┬─────────────────────┬──────────────┬───────────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ max_followup_time ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---               ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs]      ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ false   ┆ false   │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ false   ┆ false   │
+        └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
     """
 
     tte_cols = cs.starts_with("tte/")
