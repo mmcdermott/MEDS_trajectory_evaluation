@@ -398,6 +398,8 @@ def add_labels_from_true_tte(
     *,
     offset: timedelta = timedelta(0),
     offset_col: str | None = None,
+    handle_censoring: bool = True,
+    max_followup_col: str = "max_followup_time",
 ) -> pl.DataFrame:
     """Convert the true time-to-predicate values into a label for a given duration window.
 
@@ -406,15 +408,26 @@ def add_labels_from_true_tte(
     computes the label of whether or not the predicate occurred within the given duration. The output columns
     are named `label/<n>` for each `tte/<n>` column in the input.
 
+    When censoring is handled (recommended for survival analysis), cases with insufficient follow-up time
+    are labeled as `null` (censored) rather than `False`, preventing them from being treated as definitive
+    negatives in AUC calculations.
+
     Arguments:
         df: A DataFrame with columns "tte/*" (a time-to-predicate value) and ``duration``
             (the duration for which the label should be computed). ``offset`` sets a constant
             offset from the prediction time. If ``offset_col`` is provided, its values are
             added to ``offset`` on a per-row basis.
+        handle_censoring: If ``True`` (default), cases with insufficient follow-up time are labeled
+            as ``None`` (censored) rather than ``False``. This requires the ``max_followup_col`` to
+            be present in the DataFrame.
+        max_followup_col: Name of the column containing maximum follow-up time for each row.
+            Only used when ``handle_censoring`` is ``True``.
 
     Returns:
         A DataFrame with the same columns as the input except for `tte/*`, plus a new column "label/*"
-        containing the labels for each row and tte column.
+        containing the labels for each row and tte column. When censoring is handled, labels can be
+        ``True`` (event occurred within window), ``False`` (event didn't occur with adequate follow-up),
+        or ``None`` (insufficient follow-up to determine outcome).
 
     Examples:
         >>> df = pl.DataFrame({
@@ -446,6 +459,54 @@ def add_labels_from_true_tte(
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ true    ┆ false   │
         │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
         └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+
+    Example with censoring handling (recommended for survival analysis):
+
+        >>> df_with_followup = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3, 4],
+        ...     "prediction_time": [
+        ...         datetime(2021, 1, 1), datetime(2021, 1, 2),
+        ...         datetime(2021, 1, 3), datetime(2021, 1, 4)
+        ...     ],
+        ...     "tte/A": [timedelta(days=5), timedelta(days=10), None, None],
+        ...     "tte/B": [timedelta(days=2), timedelta(days=3), timedelta(days=15), None],
+        ...     "duration": [timedelta(days=7), timedelta(days=8), timedelta(days=8), timedelta(days=20)],
+        ...     "max_followup_time": [
+        ...         timedelta(days=10), timedelta(days=12),
+        ...         timedelta(days=5), timedelta(days=15)  # Subject 3 has insufficient follow-up
+        ...     ]
+        ... })
+        >>> add_labels_from_true_tte(df_with_followup, handle_censoring=True)
+        shape: (4, 5)
+        ┌────────────┬─────────────────────┬──────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ null    ┆ false   │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ null    ┆ null    │
+        └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+
+    Note the censoring behavior:
+    - Subject 1: Event A at 5d, evaluated at 7d → True (event occurred within window)
+    - Subject 2: No event A, 12d follow-up, evaluated at 8d → False (adequate follow-up, no event)
+    - Subject 3: No event A, but only 5d follow-up, evaluated at 8d → null (censored, insufficient follow-up)
+    - Subject 4: No events, 15d follow-up, evaluated at 20d → null (censored, insufficient follow-up)
+
+        >>> add_labels_from_true_tte(df_with_followup, handle_censoring=False)  # Legacy behavior
+        shape: (4, 5)
+        ┌────────────┬─────────────────────┬──────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ false   ┆ false   │
+        └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
     """
 
     tte_cols = cs.starts_with("tte/")
@@ -453,11 +514,48 @@ def add_labels_from_true_tte(
     start = pl.lit(offset)
     if offset_col is not None:
         start = start + pl.col(offset_col)
-    label_expr = (
-        ((tte_cols > start) & (tte_cols <= start + pl.col("duration")))
-        .fill_null(False)
-        .name.map(_reprefix_fntr("label"))
-    )
+
+    if handle_censoring and max_followup_col in df.columns:
+        # Censoring-aware labeling: 3-way classification
+        # True: event occurred within window
+        # False: event didn't occur AND we have sufficient follow-up
+        # None: insufficient follow-up (censored)
+
+        evaluation_window_end = start + pl.col("duration")
+
+        label_expr = (
+            pl.when(
+                # Event occurred within evaluation window
+                (tte_cols > start) & (tte_cols <= evaluation_window_end)
+            )
+            .then(True)
+            .when(
+                # Event didn't occur AND we have adequate follow-up to make determination
+                tte_cols.is_null() & (pl.col(max_followup_col) >= evaluation_window_end)
+            )
+            .then(False)
+            .when(
+                # Event occurred outside window AND we have adequate follow-up
+                # to know it didn't occur within window
+                tte_cols.is_not_null()
+                & (tte_cols > evaluation_window_end)
+                & (pl.col(max_followup_col) >= evaluation_window_end)
+            )
+            .then(False)
+            .otherwise(
+                # Insufficient follow-up (censored cases)
+                None
+            )
+            .name.map(_reprefix_fntr("label"))
+        )
+
+    else:
+        # Legacy behavior: treat all null TTEs as False (no censoring consideration)
+        label_expr = (
+            ((tte_cols > start) & (tte_cols <= start + pl.col("duration")))
+            .fill_null(False)
+            .name.map(_reprefix_fntr("label"))
+        )
 
     return df.with_columns(label_expr).drop(tte_cols)
 
@@ -560,6 +658,7 @@ def temporal_aucs(
     *,
     offset: timedelta = timedelta(0),
     exclude_history: bool | Collection[str] = False,
+    handle_censoring: bool = True,
 ) -> pl.DataFrame:
     """Compute the AUC over different prediction windows for the first occurrence of a predicate.
 
@@ -585,6 +684,9 @@ def temporal_aucs(
         offset: Offset from the prediction time at which the evaluation window begins.
         exclude_history: If ``True`` or an iterable of task names, rows where the subject has a historical
             instance of the predicate prior to the prediction time are removed for the specified tasks.
+        handle_censoring: If ``True`` (default), cases with insufficient follow-up time are excluded from
+            AUC calculation to prevent bias from treating censored observations as definitive negatives.
+            Requires ``true_tte`` to contain a ``max_followup_time`` column.
 
     Examples:
         >>> duration_grid = [timedelta(days=1), timedelta(days=5), timedelta(days=10), timedelta(days=15)]
@@ -736,8 +838,17 @@ def temporal_aucs(
         pl.lit(duration_grid).alias("duration"),
         pl.lit(offset).alias("offset"),
     ).explode("duration")
-    with_labels = add_labels_from_true_tte(with_duration, offset_col="offset")
+    with_labels = add_labels_from_true_tte(
+        with_duration, offset_col="offset", handle_censoring=handle_censoring
+    )
     with_probs = add_probs_from_pred_ttes(with_labels, offset_col="offset")
+
+    # Filter out censored cases from AUC calculation when censoring is handled
+    if handle_censoring:
+        # Only keep rows where we have definitive labels (True or False, not None/null)
+        label_cols = cs.starts_with("label/")
+        uncensored_data = with_probs.filter(pl.all_horizontal(label_cols.is_not_null()))
+        with_probs = uncensored_data
 
     if exclude_history:
         exclude_set = set(tasks) if exclude_history is True else set(exclude_history)

@@ -104,9 +104,9 @@ def _manual_workflow(MEDS_df, pred_dfs, duration_grid, tasks, true_ttes):
 
     index_df = pred_dfs[0].select(LabelSchema.subject_id_name, LabelSchema.prediction_time_name).unique()
     subjects = index_df[LabelSchema.subject_id_name].to_list()
-    true_tte = get_raw_tte(MEDS_df, index_df, predicates)
+    true_tte = get_raw_tte(MEDS_df, index_df, predicates, include_followup_time=False)
 
-    auc_df = temporal_aucs(true_tte, merged_pred, duration_grid)
+    auc_df = temporal_aucs(true_tte, merged_pred, duration_grid, handle_censoring=False)
 
     manual = {task: [] for task in tasks}
     for duration in duration_grid:
