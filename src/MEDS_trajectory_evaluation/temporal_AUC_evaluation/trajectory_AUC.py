@@ -95,7 +95,7 @@ def temporal_auc_from_trajectory_files(
 
     merged_pred = merge_pred_ttes(pred_dfs)
     index_df = pl.concat(index_dfs, how="vertical").unique(maintain_order=True)
-    true_tte = get_raw_tte(MEDS_df, index_df, preds)
+    true_tte = get_raw_tte(MEDS_df, index_df, preds, include_followup_time=True)
 
     return temporal_aucs(
         true_tte,
