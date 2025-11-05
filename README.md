@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="static/logo_dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="static/logo_light.svg">
+    <img width="520" height="200" alt="MEDS Logot" src="static/logo_light.svg">
+  </picture>
+</p>
+
 # MEDS Trajectory Evaluation
 
 [![PyPI - Version](https://img.shields.io/pypi/v/MEDS_trajectory_evaluation)](https://pypi.org/project/MEDS_trajectory_evaluation/)
@@ -9,9 +17,14 @@
 [![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/mmcdermott/MEDS_trajectory_evaluation#license)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmcdermott/MEDS_trajectory_evaluation/pulls)
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/MEDS_trajectory_evaluation.svg)](https://github.com/mmcdermott/MEDS_trajectory_evaluation/graphs/contributors)
+[![DOI](https://zenodo.org/badge/969563032.svg)](https://doi.org/10.5281/zenodo.17536102)
 
 This package contains utilities for converting autoregressive, generated trajectories into probabilistic
-predictions for arbitrary ACES configuration files.
+predictions for arbitrary ACES configuration files and into high-granularity AUROCs across various durations
+for specific code prediction tasks.
+
+> [!WARNING]
+> This package is a work in progress and is not yet stable. The API may change in future releases.
 
 ## 1. Install
 
