@@ -19,12 +19,20 @@
 [![contributors](https://img.shields.io/github/contributors/mmcdermott/MEDS_trajectory_evaluation.svg)](https://github.com/mmcdermott/MEDS_trajectory_evaluation/graphs/contributors)
 [![DOI](https://zenodo.org/badge/969563032.svg)](https://doi.org/10.5281/zenodo.17536102)
 
-This package contains utilities for converting autoregressive, generated trajectories into probabilistic
-predictions for arbitrary ACES configuration files and into high-granularity AUROCs across various durations
-for specific code prediction tasks.
+This package contains utilities for evaluating the quality of autoregressive, generated trajectories produced
+by foundation models over MEDS datasets. In particular, the following are supported:
+
+1. A formal [schema](generated_trajectory_schema) for representing generated trajectories over MEDS datasets.
+2. Utilities for producing simple but high-granularity AUROCs for prediction of whether or not a specified
+    simple ACES predicate will occur within simple windows in the patient future.
+3. Utilities for converting generated trajectories into empirical probabilities given a full ACES task
+    definition, with optional support for \`\`relaxations'' that can be applied to the ACES task definition to
+    support more flexible labeling.
 
 > [!WARNING]
 > This package is a work in progress and is not yet stable. The API may change in future releases.
+
+# Quickstart
 
 ## 1. Install
 
@@ -33,6 +41,44 @@ pip install MEDS_trajectory_evaluation
 ```
 
 ## 2. Run
+
+### 2.A Generated Trajectory Schema
+
+Assuming you have a DataFrame `trajectories_df` containing generated trajectories with the appropriate columns,
+you can
+[align it](https://github.com/Medical-Event-Data-Standard/flexible_schema/?tab=readme-ov-file#table-and-schema-validation-and-alignment)
+to the `GeneratedTrajectorySchema` and write it out as a Parquet file as follows:
+
+```python
+from MEDS_trajectory_evaluation.schema import GeneratedTrajectorySchema
+
+pa_table = GeneratedTrajectorySchema.align(trajectories_df.to_arrow())
+pq.write_table(pa_table, out_fp)
+```
+
+### 2.B Simple Predicate Labeling
+
+If you have a simple definition of an "event" (defined as something expressible as an ACES
+["plain predicate"](https://eventstreamaces.readthedocs.io/en/latest/technical.html#aces-config-plainpredicateconfig-configuration-of-predicates-that-can-be-computed-directly-from-raw-data)
+) and you want to understand how well a set of trajectories are able to predict whether or not the _first_
+incidence of that event after the prediction time occurs within a given (set of) time horizon(s), potentially
+with an offset, you can use this package to efficiently compute AUROCs for all predicates and horizons as
+follows: **TODO UPDATE**
+
+```python
+temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])
+shape: (2, 3)
+┌──────────────┬────────┬────────┐
+│ duration     ┆ AUC/A  ┆ AUC/B │
+│ ---          ┆ ---    ┆ ---   │
+│ duration[μs] ┆ f64    ┆ f64   │
+╞══════════════╪════════╪═══════╡
+│ 1d           ┆ 0.65   ┆ 0.72  │
+│ 7d           ┆ 0.71   ┆ 0.80  │
+└──────────────┴────────┴────────┘
+```
+
+### 2.C Full ACES Task Labeling
 
 ```bash
 ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
@@ -43,14 +89,61 @@ Optionally, you can add relaxations to the zero-shot labeling config via `labele
 `labeler.collapse_temporal_gap_windows=True`, or `labeler.remove_post_label_windows=true`. See below for
 examples of these in action.
 
-# Documentation
+# Full Documentation
+
+## Generated Trajectory Schema
+
+The `GeneratedTrajectorySchema` class is a
+[`flexible_schema`](https://github.com/Medical-Event-Data-Standard/flexible_schema/) instance that extends the
+core MEDS data schema to include the `prediction_time` element from the MEDS label schema that defines the
+latest permitted time for the input data used to generate the source trajectory. It is expected that you store
+different trajectories generated from the same prediction time per subject (e.g., if you generate 100 sample
+trajectories per subject-prediction-time) as different data frames. This ensures that data can be properly
+sorted by `subject_id`, `prediction_time`, and `time` without ambiguity across trajectory samples.
+
+## Temporal AUC Evaluation
+
+The `temporal_AUC_evaluation` package contains helpers for turning
+time-to-first-event observations into AUC summaries across multiple prediction
+horizons.
+
+### Helper functions
+
+- `get_raw_tte` and `get_trajectory_tte` extract time-to-event values for each
+    predicate from real datasets or generated trajectories.
+- `merge_pred_ttes` stacks multiple predicted TTE tables into list columns so
+    probability distributions can be derived per subject.
+- `add_labels_from_true_tte` converts true durations into binary labels for a
+    given horizon and `add_probs_from_pred_ttes` turns predicted durations into
+    probabilities of observing the event within that window.
+
+### Computing AUCs
+
+`temporal_aucs` wires these pieces together and returns a DataFrame indexed by
+duration with `AUC/<predicate>` columns detailing discrimination for each
+predicate at every horizon.
+
+```python
+>>> temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])  # doctest: +SKIP
+shape: (2, 3)
+┌──────────────┬────────┬────────┐
+│ duration     ┆ AUC/A  ┆ AUC/B │
+│ ---          ┆ ---    ┆ ---   │
+│ duration[μs] ┆ f64    ┆ f64   │
+╞══════════════╪════════╪═══════╡
+│ 1d           ┆ 0.65   ┆ 0.72  │
+│ 7d           ┆ 0.71   ┆ 0.80  │
+└──────────────┴────────┴────────┘
+```
+
+## Full ACES Task Labeling
 
 > [!IMPORTANT]
 > This library only works with a subset of ACES configs; namely, those that have a tree-based set of
 > dependencies between the end of the input window (the prediction time) and the end of the target window (the
 > label window).
 
-## Terminology
+### Terminology
 
 | Term                            | Description                                                                                                                                                                                                                                                                            |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -63,13 +156,13 @@ examples of these in action.
 | valid                           | A trajectory is "valid" under a config when it does not indicate a sequence of measurements that would violate any inclsuion/exclusion criteria in the zero-shot task config.                                                                                                          |
 | determinable                    | A trajectory is "determinable" under a config if and only if it is both valid and contains valid realizations of all relevant windows in the config (e.g., we don't need to generate more).                                                                                            |
 
-## Supported Config Relaxations
+### Supported Config Relaxations
 
 We support a few different relaxations that can help make zero-shot label extraction simpler and more
 accommodating. These relaxations are not always appropriate for all tasks, but they can be useful in some
 cases. To understand them deeply, we'll use several examples, which we'll set up first.
 
-### Example Configurations
+#### Example Configurations
 
 To explore these relaxations, we'll use a few simple example task configs. To construct them, we first need to
 import the relevant ACES config classes:
@@ -88,7 +181,7 @@ We'll also import the `print_ACES` helper function to visualize the task configs
 
 ```
 
-#### Example 1: In-hospital mortality prediction
+##### Example 1: In-hospital mortality prediction
 
 ```python
 >>> in_hosp_mortality_cfg = TaskExtractorConfig(
@@ -121,7 +214,7 @@ trigger
 
 ```
 
-#### Example 2: 30-day post discharge mortality prediction
+##### Example 2: 30-day post discharge mortality prediction
 
 Given a hospital admission, we'll use the first 24 hours of data to predict whether or not the patient will
 die within 30 days of discharge (with a 1-day gap window post discharge to avoid future leakage). We'll also
@@ -168,7 +261,7 @@ trigger
 
 ```
 
-#### Example 3: 30-day readmission prediction with censoring
+##### Example 3: 30-day readmission prediction with censoring
 
 This example features a 30-day readmission risk prediction task, but with a post-target censoring protection
 window.
@@ -210,7 +303,7 @@ trigger; **Prediction Time**
 
 ```
 
-#### Example 4: Two-stage Infusion
+##### Example 4: Two-stage Infusion
 
 In this hypothetical example, we are examining a cohort of patients who are given an infusion, then given a
 drug, then (within 10 minutes) have their infusion stopped temporarily, then resumed. We are interested in
@@ -246,13 +339,13 @@ trigger; **Prediction Time**
 
 ```
 
-#### Other examples we can't reflect:
+##### Other examples we can't reflect:
 
 1. What if we only want to count something as a readmission only if the next admission has a discharge
     associated with a particular diagnosis code? We can't reflect this in ACES currently, but it would pose
     additional challenges.
 
-### Relaxations
+#### Relaxations
 
 We can perform any of the relaxations with the `convert_to_zero_shot` function in
 [`task_config`](src/MEDS_trajectory_evaluation/ACES_config_evaluation/task_config.py) and an appropriate labeler config. Let's import that now for
@@ -304,7 +397,7 @@ hospitalization.end; **Prediction Time**
 
 ```
 
-#### 1. `remove_all_criteria`: Remove inclusion/exclusion criteria
+##### 1. `remove_all_criteria`: Remove inclusion/exclusion criteria
 
 This relaxation removes all inclusion/exclusion criteria from the task config, but does not change the window
 boundaries that are used to compile the task cohort.
@@ -314,7 +407,7 @@ boundaries that are used to compile the task cohort.
 > task criteria (with respect to their real data). Rather, it just means that generated trajectories will not
 > be discarded on the basis of failing to meet post-input window inclusion/exclusion criteria.
 
-##### On Example 1: In Hospital Mortality
+###### On Example 1: In Hospital Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, {"remove_all_criteria": True}))
@@ -327,7 +420,7 @@ input.end; **Prediction Time**
 Here, this may be a mistake, as it will classify trajectories as true if they die after discharge, provided
 discharge is within 1 day. However, using this in conjunction with absorbing gap windows is likely suitable.
 
-##### On Example 2: Post-discharge Mortality
+###### On Example 2: Post-discharge Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, {"remove_all_criteria": True}))
@@ -342,7 +435,7 @@ Here, this is may be a mistake, as it will classify as negative trajectories who
 discharge (whereas previously such trajectories would be excluded). However, in concert with gap window
 absorption, this may be suitable.
 
-##### On Example 3: Readmission
+###### On Example 3: Readmission
 
 ```python
 >>> print_ACES(convert_to_zero_shot(readmission_cfg, {"remove_all_criteria": True}))
@@ -357,7 +450,7 @@ In this example, there are both good and bad aspects of these changes. First, th
 as negative if they are admitted within 1 day (previously, they would have been excluded), which is likely
 problematic. But it also renders the censoring window moot, which may improve the efficiency.
 
-##### On Example 4: 2nd infusion stage adverse event
+###### On Example 4: 2nd infusion stage adverse event
 
 ```python
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg, {"remove_all_criteria": True}))
@@ -372,7 +465,7 @@ This may be suitable here; it still tracks the right target (adverse events with
 but now will include labels for patients who have adverse events in both, which may improve the predictive
 quality or efficiency of the trajectory-driven predictor.
 
-#### 2. `collapse_temporal_gap_windows`: Absorb temporal gap windows into target
+##### 2. `collapse_temporal_gap_windows`: Absorb temporal gap windows into target
 
 This relaxation absorbs any chain of temporal windows between the input and target window terminating at the
 target window into the target window. This can only be used if the constraints of these windows are all
@@ -388,7 +481,7 @@ predictions with fewer generated tokens and simpler early stopping criteria.
 
 ```
 
-##### On Example 1: In Hospital Mortality
+###### On Example 1: In Hospital Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, labeler_cfg))
@@ -400,7 +493,7 @@ input.end; **Prediction Time**
 This is likely appropriate, as we will now simply classify if there is any death observed before the next
 discharge.
 
-##### On Example 2: Post-discharge Mortality
+###### On Example 2: Post-discharge Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, labeler_cfg))
@@ -413,7 +506,7 @@ input.end; **Prediction Time**
 This is likely suitable; we have simply stremlined the prediction target to be anytime within the 30 days post
 discharge, giving the trajectory labeler a more flexible target.
 
-##### On Example 3: Readmission
+###### On Example 3: Readmission
 
 ```python
 >>> print_ACES(convert_to_zero_shot(readmission_cfg, labeler_cfg))
@@ -426,7 +519,7 @@ hospitalization.end; **Prediction Time**
 This is likely an improvement over the basic config, because it is more accommodating to the target, but it
 still has a censoring prediction window we may want to remove.
 
-##### On Example 4: 2nd infusion stage adverse event
+###### On Example 4: 2nd infusion stage adverse event
 
 ```python
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg, labeler_cfg))
@@ -439,12 +532,12 @@ still has a censoring prediction window we may want to remove.
 
 This makes no difference as there are no temporal gap windows in this example.
 
-#### 3. `remove_post_label_windows`: Removes all post-label windows from the task config
+##### 3. `remove_post_label_windows`: Removes all post-label windows from the task config
 
 This relaxation removes all windows that are after the label window. This is useful for removing censoring
 protection windows which expand the generation scope necessary to resolve a window.
 
-##### On Example 1: In Hospital Mortality
+###### On Example 1: In Hospital Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(in_hosp_mortality_cfg, {"remove_post_label_windows": True}))
@@ -456,7 +549,7 @@ input.end; **Prediction Time**
 
 This makes no difference as there are no post-label windows in this example.
 
-##### On Example 2: Post-discharge Mortality
+###### On Example 2: Post-discharge Mortality
 
 ```python
 >>> print_ACES(convert_to_zero_shot(post_discharge_mortality_cfg, {"remove_post_label_windows": True}))
@@ -469,7 +562,7 @@ input.end; **Prediction Time**
 
 This makes no difference as there are no post-label windows in this example.
 
-##### On Example 3: Readmission
+###### On Example 3: Readmission
 
 ```python
 >>> print_ACES(convert_to_zero_shot(readmission_cfg, {"remove_post_label_windows": True}))
@@ -482,7 +575,7 @@ hospitalization.end; **Prediction Time**
 This is likely an improvement, as the censoring protection may complicate generation and reduce the
 efficiency.
 
-##### On Example 4: 2nd infusion stage adverse event
+###### On Example 4: 2nd infusion stage adverse event
 
 ```python
 >>> print_ACES(convert_to_zero_shot(two_stage_cfg, {"remove_post_label_windows": True}))
@@ -495,7 +588,7 @@ efficiency.
 
 This makes no difference as there are no post-label windows in this example.
 
-### Examples of Labeling
+#### Examples of Labeling
 
 To see labeling in action, we'll work with the following configuration:
 
@@ -567,7 +660,7 @@ first we need to import the label function:
 
 ```
 
-#### 1. No Relaxations
+##### 1. No Relaxations
 
 ```python
 >>> print_ACES(convert_to_zero_shot(sample_ACES_cfg))
@@ -612,7 +705,7 @@ shape: (2, 5)
 
 ```
 
-#### 2. Without gap windows or criteria
+##### 2. Without gap windows or criteria
 
 ```python
 >>> labeler_cfg = {"remove_all_criteria": True, "collapse_temporal_gap_windows": True}
@@ -657,39 +750,4 @@ shape: (2, 5)
 │ 2          ┆ 1999-01-01 00:00:00 UTC ┆ true  ┆ true         ┆ true  │
 └────────────┴─────────────────────────┴───────┴──────────────┴───────┘
 
-```
-
-## Temporal AUC Evaluation
-
-The `temporal_AUC_evaluation` package contains helpers for turning
-time-to-first-event observations into AUC summaries across multiple prediction
-horizons.
-
-### Helper functions
-
-- `get_raw_tte` and `get_trajectory_tte` extract time-to-event values for each
-    predicate from real datasets or generated trajectories.
-- `merge_pred_ttes` stacks multiple predicted TTE tables into list columns so
-    probability distributions can be derived per subject.
-- `add_labels_from_true_tte` converts true durations into binary labels for a
-    given horizon and `add_probs_from_pred_ttes` turns predicted durations into
-    probabilities of observing the event within that window.
-
-### Computing AUCs
-
-`temporal_aucs` wires these pieces together and returns a DataFrame indexed by
-duration with `AUC/<predicate>` columns detailing discrimination for each
-predicate at every horizon.
-
-```python
->>> temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])  # doctest: +SKIP
-shape: (2, 3)
-┌──────────────┬────────┬────────┐
-│ duration     ┆ AUC/A  ┆ AUC/B │
-│ ---          ┆ ---    ┆ ---   │
-│ duration[μs] ┆ f64    ┆ f64   │
-╞══════════════╪════════╪═══════╡
-│ 1d           ┆ 0.65   ┆ 0.72  │
-│ 7d           ┆ 0.71   ┆ 0.80  │
-└──────────────┴────────┴────────┘
 ```
