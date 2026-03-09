@@ -22,12 +22,15 @@
 This package contains utilities for evaluating the quality of autoregressive, generated trajectories produced
 by foundation models over MEDS datasets. In particular, the following are supported:
 
-1. A formal [schema](generated_trajectory_schema) for representing generated trajectories over MEDS datasets.
+1. A formal [schema](#generated_trajectory_schema) for representing generated trajectories over MEDS datasets
+    (See [2.A](#2a-generated-trajectory-schema) for quickstart).
 2. Utilities for producing simple but high-granularity AUROCs for prediction of whether or not a specified
-    simple ACES predicate will occur within simple windows in the patient future.
+    simple ACES predicate will occur within simple windows in the patient future
+    (See [2.B](#2b-simple-predicate-labeling) for quickstart).
 3. Utilities for converting generated trajectories into empirical probabilities given a full ACES task
-    definition, with optional support for \`\`relaxations'' that can be applied to the ACES task definition to
+    definition, with optional support for "relaxations" that can be applied to the ACES task definition to
     support more flexible labeling.
+    (See [2.C](#2c-full-aces-task-labeling) for quickstart).
 
 > [!WARNING]
 > This package is a work in progress and is not yet stable. The API may change in future releases.
@@ -44,16 +47,74 @@ pip install MEDS_trajectory_evaluation
 
 ### 2.A Generated Trajectory Schema
 
-Assuming you have a DataFrame `trajectories_df` containing generated trajectories with the appropriate columns,
-you can
+The included [`GeneratedTrajectorySchema`](src/MEDS_trajectory_evaluation/schema.py) provides a format to
+capture generated trajectories in a consistent manner; in particular, it asserts that generated trajectories
+should look _identical_ to real MEDS data, with the addition of a `prediction_time` column that indicates the
+latest time that input data was used to generate the trajectory.
+
+You can use this schema through the normal usage options offered by
+[`flexible_schema`](https://github.com/Medical-Event-Data-Standard/flexible_schema/)
+class objects. For
+example, assuming you have a DataFrame `trajectories_df` containing generated trajectories with the appropriate
+columns:
+
+```python
+>>> trajectories_df = pl.DataFrame({
+...     "subject_id": [1, 1, 1, 2, 2],
+...     "time": [
+...         datetime(1993, 1, 1, 12, 0),
+...         datetime(1993, 1, 1, 13, 0),
+...         datetime(1993, 1, 1, 14, 0),
+...         datetime(1999, 1, 1, 13, 0),
+...         datetime(1999, 1, 1, 14, 0),
+...     ],
+...     "code": ["LAB_1", "LAB_2", "ICU_DISCHARGE", "LAB_3", "LAB_4"],
+...     "numeric_value": [1.0, None, None, None, 1.1],
+...     "prediction_time": [
+...         datetime(1993, 1, 1, 0, 0),
+...         datetime(1993, 1, 1, 0, 0),
+...         datetime(1993, 1, 1, 0, 0),
+...         datetime(1999, 1, 1, 0, 0),
+...         datetime(1999, 1, 1, 0, 0),
+...     ],
+... })
+>>> trajectories_df
+shape: (5, 5)
+┌────────────┬─────────────────────┬───────────────┬───────────────┬─────────────────────┐
+│ subject_id ┆ time                ┆ code          ┆ numeric_value ┆ prediction_time     │
+│ ---        ┆ ---                 ┆ ---           ┆ ---           ┆ ---                 │
+│ i64        ┆ datetime[μs]        ┆ str           ┆ f64           ┆ datetime[μs]        │
+╞════════════╪═════════════════════╪═══════════════╪═══════════════╪═════════════════════╡
+│ 1          ┆ 1993-01-01 12:00:00 ┆ LAB_1         ┆ 1.0           ┆ 1993-01-01 00:00:00 │
+│ 1          ┆ 1993-01-01 13:00:00 ┆ LAB_2         ┆ null          ┆ 1993-01-01 00:00:00 │
+│ 1          ┆ 1993-01-01 14:00:00 ┆ ICU_DISCHARGE ┆ null          ┆ 1993-01-01 00:00:00 │
+│ 2          ┆ 1999-01-01 13:00:00 ┆ LAB_3         ┆ null          ┆ 1999-01-01 00:00:00 │
+│ 2          ┆ 1999-01-01 14:00:00 ┆ LAB_4         ┆ 1.1           ┆ 1999-01-01 00:00:00 │
+└────────────┴─────────────────────┴───────────────┴───────────────┴─────────────────────┘
+
+```
+
+... then you can
 [align it](https://github.com/Medical-Event-Data-Standard/flexible_schema/?tab=readme-ov-file#table-and-schema-validation-and-alignment)
 to the `GeneratedTrajectorySchema` and write it out as a Parquet file as follows:
 
 ```python
-from MEDS_trajectory_evaluation.schema import GeneratedTrajectorySchema
+>>> from MEDS_trajectory_evaluation.schema import GeneratedTrajectorySchema
+>>> pa_table = GeneratedTrajectorySchema.align(trajectories_df.to_arrow())
+>>> pa_table
+pyarrow.Table
+subject_id: int64
+time: timestamp[us]
+code: string
+numeric_value: float
+prediction_time: timestamp[us]
+----
+subject_id: [[1,1,1,2,2]]
+time: [[1993-01-01 12:00:00.000000,...,1999-01-01 14:00:00.000000]]
+code: [["LAB_1",...,"LAB_4"]]
+numeric_value: [[1,...,1.1]]
+prediction_time: [[1993-01-01 00:00:00.000000,...,1999-01-01 00:00:00.000000]]
 
-pa_table = GeneratedTrajectorySchema.align(trajectories_df.to_arrow())
-pq.write_table(pa_table, out_fp)
 ```
 
 ### 2.B Simple Predicate Labeling
@@ -69,12 +130,12 @@ follows: **TODO UPDATE**
 temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])
 shape: (2, 3)
 ┌──────────────┬────────┬────────┐
-│ duration     ┆ AUC/A  ┆ AUC/B │
-│ ---          ┆ ---    ┆ ---   │
-│ duration[μs] ┆ f64    ┆ f64   │
-╞══════════════╪════════╪═══════╡
-│ 1d           ┆ 0.65   ┆ 0.72  │
-│ 7d           ┆ 0.71   ┆ 0.80  │
+│ duration     ┆ AUC/A  ┆ AUC/B  │
+│ ---          ┆ ---    ┆ ---    │
+│ duration[μs] ┆ f64    ┆ f64    │
+╞══════════════╪════════╪════════╡
+│ 1d           ┆ 0.65   ┆ 0.72   │
+│ 7d           ┆ 0.71   ┆ 0.80   │
 └──────────────┴────────┴────────┘
 ```
 
@@ -95,11 +156,13 @@ examples of these in action.
 
 The `GeneratedTrajectorySchema` class is a
 [`flexible_schema`](https://github.com/Medical-Event-Data-Standard/flexible_schema/) instance that extends the
-core MEDS data schema to include the `prediction_time` element from the MEDS label schema that defines the
-latest permitted time for the input data used to generate the source trajectory. It is expected that you store
-different trajectories generated from the same prediction time per subject (e.g., if you generate 100 sample
-trajectories per subject-prediction-time) as different data frames. This ensures that data can be properly
-sorted by `subject_id`, `prediction_time`, and `time` without ambiguity across trajectory samples.
+core
+[MEDS data schema](https://github.com/Medical-Event-Data-Standard/meds?tab=readme-ov-file#the-dataschema-schema)
+to include the `prediction_time` element from the MEDS label schema that defines the latest permitted time for
+the input data used to generate the source trajectory. It is expected that you store different trajectories
+generated from the same prediction time per subject (e.g., if you generate 100 sample trajectories per
+subject-prediction-time) as different data frames. This ensures that data can be properly sorted by
+`subject_id`, `prediction_time`, and `time` without ambiguity across trajectory samples.
 
 ## Temporal AUC Evaluation
 
@@ -127,12 +190,12 @@ predicate at every horizon.
 >>> temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])  # doctest: +SKIP
 shape: (2, 3)
 ┌──────────────┬────────┬────────┐
-│ duration     ┆ AUC/A  ┆ AUC/B │
-│ ---          ┆ ---    ┆ ---   │
-│ duration[μs] ┆ f64    ┆ f64   │
-╞══════════════╪════════╪═══════╡
-│ 1d           ┆ 0.65   ┆ 0.72  │
-│ 7d           ┆ 0.71   ┆ 0.80  │
+│ duration     ┆ AUC/A  ┆ AUC/B  │
+│ ---          ┆ ---    ┆ ---    │
+│ duration[μs] ┆ f64    ┆ f64    │
+╞══════════════╪════════╪════════╡
+│ 1d           ┆ 0.65   ┆ 0.72   │
+│ 7d           ┆ 0.71   ┆ 0.80   │
 └──────────────┴────────┴────────┘
 ```
 
