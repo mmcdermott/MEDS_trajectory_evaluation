@@ -1,3 +1,4 @@
+import logging
 import math
 from collections.abc import Callable, Collection
 from datetime import timedelta
@@ -5,6 +6,8 @@ from datetime import timedelta
 import polars as pl
 import polars.selectors as cs
 from meds import LabelSchema
+
+logger = logging.getLogger(__name__)
 
 
 def _reprefix_fntr(new_prefix: str) -> Callable[[str], str]:
@@ -382,6 +385,24 @@ def get_grid(
     ttes_df: pl.DataFrame,
     grid: str | int | None | list[timedelta] = 10000,
 ) -> list[timedelta]:
+    """Dispatch function that builds a duration grid from the polymorphic ``grid`` parameter.
+
+    Args:
+        ttes_df: DataFrame containing ``tte/`` and/or ``tte_pred/`` columns used to derive grid boundaries
+            when ``grid`` is not an explicit list.
+        grid: Specifies how to build the duration grid.  If a *string*, it is interpreted as a resolution
+            (e.g. ``"1d"``) and a regular grid is created via :func:`resolution_grid`.  If an *int* or
+            ``None``, that many change-point durations are sampled via :func:`random_grid` (``None`` returns
+            all change-points).  If a *list* of :class:`~datetime.timedelta`, it is used verbatim after
+            validation.
+
+    Returns:
+        A list (or Series) of durations to use as the evaluation grid.
+
+    Raises:
+        ValueError: If ``grid`` is a list containing non-timedelta elements.
+    """
+
     match grid:
         case str() as resolution:
             return resolution_grid(ttes_df, resolution)
@@ -900,7 +921,7 @@ def temporal_aucs(
     included_cols = []
     for c in out_cols:
         if c not in aucs:
-            print(f"Warning: missing column {c}")
+            logger.warning("Missing column %s", c)
         else:
             included_cols.append(c)
 
