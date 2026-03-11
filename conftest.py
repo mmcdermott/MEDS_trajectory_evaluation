@@ -1,4 +1,11 @@
-"""Test set-up and fixtures code."""
+"""Test configuration, shared fixtures, and doctest namespace setup.
+
+This module provides:
+  - Sample ACES task configurations and predicate files for testing.
+  - Generated trajectory DataFrames with expected labels under various relaxation settings.
+  - Doctest namespace injection so that source-level doctests can reference shared fixtures
+    (e.g., ``sample_ACES_cfg``, ``sample_labeled_trajectories_dfs``).
+"""
 
 import json
 import tempfile

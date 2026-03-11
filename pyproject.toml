@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="Matthew McDermott", email="mattmcdermott8@gmail.com" },
 ]
-description = "A framework for extracting labels from generated trajectories for arbitrary ACES configs."
+description = "Utilities for evaluating autoregressive generated trajectories over MEDS datasets, including temporal AUC computation and zero-shot ACES task labeling."
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [

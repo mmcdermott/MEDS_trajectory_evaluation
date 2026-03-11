@@ -9,6 +9,7 @@ from meds import DataSchema, LabelSchema
 
 from ..aces_utils import get_MEDS_plain_predicates
 
+# Type alias for a mapping of predicate names to their ACES plain predicate configurations.
 PREDICATES_T = dict[str, PlainPredicateConfig]
 
 POSSIBLE_IDS = {DataSchema.subject_id_name, LabelSchema.prediction_time_name}
