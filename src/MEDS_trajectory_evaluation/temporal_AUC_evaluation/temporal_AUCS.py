@@ -999,13 +999,6 @@ def temporal_aucs(
     )
     with_probs = add_probs_from_pred_ttes(with_labels, offset_col="offset")
 
-    # Filter out censored cases from AUC calculation when censoring is handled
-    if handle_censoring:
-        # Only keep rows where we have definitive labels (True or False, not None/null)
-        label_cols = cs.starts_with("label/")
-        uncensored_data = with_probs.filter(pl.all_horizontal(label_cols.is_not_null()))
-        with_probs = uncensored_data
-
     if exclude_history:
         exclude_set = set(tasks) if exclude_history is True else set(exclude_history)
     else:
@@ -1014,6 +1007,11 @@ def temporal_aucs(
     dfs_by_task = []
     for task in tasks:
         df_task = with_probs
+
+        # Filter out censored cases per-task: only exclude rows where *this* task's label is null
+        if handle_censoring:
+            df_task = df_task.filter(pl.col(f"label/{task}").is_not_null())
+
         if task in exclude_set and f"history/{task}" in df_task.columns:
             df_task = df_task.filter(~pl.col(f"history/{task}"))
 
