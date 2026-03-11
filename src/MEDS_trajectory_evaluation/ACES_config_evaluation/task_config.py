@@ -1,6 +1,7 @@
 """Utilities to define and manipulate zero-shot labeling task configurations from ACES configurations."""
 
 import copy
+from contextlib import redirect_stdout
 from io import StringIO
 
 from aces.config import TaskExtractorConfig
@@ -43,12 +44,13 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
 
     if prediction_time_window_node not in label_window_node.ancestors:
         strio = StringIO()
-        tree_str = print_tree(task_cfg.window_tree, file=strio)
+        with redirect_stdout(strio):
+            print_tree(task_cfg.window_tree)
         raise ValueError(
             "zeroshot_ACES only supports task configs where the prediction time node is an ancestor of the "
             f"label node. Here, the prediction time window node ({prediction_time_window_node.node_name}) "
             f"is not an ancestor of the label window node ({label_window_node.node_name}). Got tree:\n"
-            f"{tree_str.get_value()}"
+            f"{strio.getvalue()}"
         )
 
 

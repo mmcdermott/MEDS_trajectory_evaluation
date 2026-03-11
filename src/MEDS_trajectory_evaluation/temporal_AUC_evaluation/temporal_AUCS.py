@@ -1,9 +1,13 @@
+import logging
+import math
 from collections.abc import Callable, Collection
 from datetime import timedelta
 
 import polars as pl
 import polars.selectors as cs
 from meds import LabelSchema
+
+logger = logging.getLogger(__name__)
 
 
 def _reprefix_fntr(new_prefix: str) -> Callable[[str], str]:
@@ -200,18 +204,205 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
     return df.select(*ids, AUC.name.map(_reprefix_fntr("AUC")))
 
 
+def _parse_resolution(resolution: str) -> timedelta:
+    """Parse a simple duration specification.
+
+    Args:
+        resolution: String encoding of the resolution. Supported units are
+            ``"d"`` (days), ``"h"`` (hours), ``"m"`` (minutes), and ``"s"``
+            (seconds).
+
+    Returns:
+        The parsed duration.
+
+    Examples:
+        >>> _parse_resolution("5d")
+        datetime.timedelta(days=5)
+        >>> _parse_resolution("3h")
+        datetime.timedelta(seconds=10800)
+        >>> _parse_resolution("foo")
+        Traceback (most recent call last):
+            ...
+        ValueError: Invalid resolution specification: 'foo'
+
+    Note:
+        Uses :func:`pytimeparse.timeparse.parse` under the hood to support a
+        range of short duration strings.
+    """
+
+    from pytimeparse import parse
+
+    seconds = parse(resolution)
+    if seconds is None:
+        raise ValueError(f"Invalid resolution specification: {resolution!r}")
+
+    return timedelta(seconds=seconds)
+
+
+def _collect_durations(df: pl.DataFrame) -> pl.Series:
+    """Collect unique durations from ``tte`` columns.
+
+    Args:
+        df: DataFrame containing ``tte/`` or ``tte_pred/`` columns.
+
+    Returns:
+        A sorted series of the unique durations observed.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], []],
+        ... })
+        >>> _collect_durations(df)
+        shape: (3,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+        ]
+        >>> _collect_durations(pl.DataFrame({"x": [1, 2]}))
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    cols = df.select(cs.matches(r"^tte(?:_pred)?/"))
+    if cols.width == 0:
+        return pl.Series([], dtype=pl.Duration)
+
+    series_list: list[pl.Series] = []
+    for name in cols.columns:
+        s = cols[name]
+        if s.dtype == pl.List:
+            series_list.append(s.explode())
+        else:
+            series_list.append(s)
+
+    return pl.concat(series_list, how="vertical").drop_nulls().unique().sort()
+
+
 def resolution_grid(ttes_df: pl.DataFrame, resolution: str) -> pl.Series:
-    raise NotImplementedError
+    """Create a regularly spaced duration grid.
+
+    Args:
+        ttes_df: DataFrame containing ``tte`` information.
+        resolution: Resolution string, e.g. ``"1d"`` or ``"12h"``.
+
+    Returns:
+        A series of durations spaced according to ``resolution``.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=5)],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], [timedelta(days=4)], []],
+        ... })
+        >>> resolution_grid(df, "1d")
+        shape: (5,)
+        Series: '' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+            4d
+            5d
+        ]
+        >>> resolution_grid(pl.DataFrame({"x": [1]}), "1d")
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    delta = _parse_resolution(resolution)
+    durations = _collect_durations(ttes_df)
+    if durations.is_empty():
+        return pl.Series([], dtype=pl.Duration)
+
+    max_dur = durations.max()
+    if max_dur is None:
+        raise ValueError("No valid durations found in DataFrame")
+
+    n = math.ceil(max_dur / delta)
+    grid = [delta * i for i in range(1, n + 1)]
+    return pl.Series(grid)
 
 
 def random_grid(ttes_df: pl.DataFrame, n: int | None) -> pl.Series:
-    raise NotImplementedError
+    """Sample ``n`` durations from observed change points.
+
+    Args:
+        ttes_df: DataFrame containing ``tte`` information.
+        n: Number of samples to draw. If ``None`` all unique durations are
+            returned.
+
+    Returns:
+        A series of durations sampled without replacement.
+
+    Examples:
+        >>> df = pl.DataFrame({
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=5)],
+        ...     "tte_pred/A": [[timedelta(days=1), timedelta(days=3)], [timedelta(days=4)], []],
+        ... })
+        >>> random_grid(df, None)
+        shape: (5,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            1d
+            2d
+            3d
+            4d
+            5d
+        ]
+        >>> random_grid(df, 3)
+        shape: (3,)
+        Series: 'tte/A' [duration[μs]]
+        [
+            2d
+            3d
+            5d
+        ]
+        >>> random_grid(pl.DataFrame({"x": [1]}), None)
+        shape: (0,)
+        Series: '' [duration[μs]]
+        [
+        ]
+    """
+
+    durations = _collect_durations(ttes_df)
+    if durations.is_empty():
+        return pl.Series([], dtype=pl.Duration)
+
+    if n is None:
+        return durations
+
+    n = min(n, len(durations))
+    return durations.sample(n=n, seed=0, with_replacement=False).sort()
 
 
 def get_grid(
     ttes_df: pl.DataFrame,
     grid: str | int | None | list[timedelta] = 10000,
 ) -> list[timedelta]:
+    """Dispatch function that builds a duration grid from the polymorphic ``grid`` parameter.
+
+    Args:
+        ttes_df: DataFrame containing ``tte/`` and/or ``tte_pred/`` columns used to derive grid boundaries
+            when ``grid`` is not an explicit list.
+        grid: Specifies how to build the duration grid.  If a *string*, it is interpreted as a resolution
+            (e.g. ``"1d"``) and a regular grid is created via :func:`resolution_grid`.  If an *int* or
+            ``None``, that many change-point durations are sampled via :func:`random_grid` (``None`` returns
+            all change-points).  If a *list* of :class:`~datetime.timedelta`, it is used verbatim after
+            validation.
+
+    Returns:
+        A list (or Series) of durations to use as the evaluation grid.
+
+    Raises:
+        ValueError: If ``grid`` is a list containing non-timedelta elements.
+    """
+
     match grid:
         case str() as resolution:
             return resolution_grid(ttes_df, resolution)
@@ -228,6 +419,8 @@ def add_labels_from_true_tte(
     *,
     offset: timedelta = timedelta(0),
     offset_col: str | None = None,
+    handle_censoring: bool = True,
+    max_followup_col: str = "max_followup_time",
 ) -> pl.DataFrame:
     """Convert the true time-to-predicate values into a label for a given duration window.
 
@@ -236,15 +429,26 @@ def add_labels_from_true_tte(
     computes the label of whether or not the predicate occurred within the given duration. The output columns
     are named `label/<n>` for each `tte/<n>` column in the input.
 
+    When censoring is handled (recommended for survival analysis), cases with insufficient follow-up time
+    are labeled as `null` (censored) rather than `False`, preventing them from being treated as definitive
+    negatives in AUC calculations.
+
     Arguments:
         df: A DataFrame with columns "tte/*" (a time-to-predicate value) and ``duration``
             (the duration for which the label should be computed). ``offset`` sets a constant
             offset from the prediction time. If ``offset_col`` is provided, its values are
             added to ``offset`` on a per-row basis.
+        handle_censoring: If ``True`` (default), cases with insufficient follow-up time are labeled
+            as ``None`` (censored) rather than ``False``. This requires the ``max_followup_col`` to
+            be present in the DataFrame.
+        max_followup_col: Name of the column containing maximum follow-up time for each row.
+            Only used when ``handle_censoring`` is ``True``.
 
     Returns:
         A DataFrame with the same columns as the input except for `tte/*`, plus a new column "label/*"
-        containing the labels for each row and tte column.
+        containing the labels for each row and tte column. When censoring is handled, labels can be
+        ``True`` (event occurred within window), ``False`` (event didn't occur with adequate follow-up),
+        or ``None`` (insufficient follow-up to determine outcome).
 
     Examples:
         >>> df = pl.DataFrame({
@@ -276,6 +480,56 @@ def add_labels_from_true_tte(
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ true    ┆ false   │
         │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ false   ┆ false   │
         └────────────┴─────────────────────┴──────────────┴─────────┴─────────┘
+
+    Example with censoring handling (recommended for survival analysis):
+
+        >>> df_with_followup = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3, 4],
+        ...     "prediction_time": [
+        ...         datetime(2021, 1, 1), datetime(2021, 1, 2),
+        ...         datetime(2021, 1, 3), datetime(2021, 1, 4)
+        ...     ],
+        ...     "tte/A": [timedelta(days=5), timedelta(days=10), timedelta(days=3), None],
+        ...     "tte/B": [timedelta(days=2), timedelta(days=3), timedelta(days=15), None],
+        ...     "duration": [timedelta(days=7), timedelta(days=8), timedelta(days=8), timedelta(days=20)],
+        ...     "max_followup_time": [
+        ...         timedelta(days=10), timedelta(days=12),
+        ...         timedelta(days=5), timedelta(days=15)
+        ...     ]
+        ... })
+        >>> add_labels_from_true_tte(df_with_followup, handle_censoring=True)
+        shape: (4, 6)
+        ┌────────────┬─────────────────────┬──────────────┬───────────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ max_followup_time ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---               ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs]      ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ true    ┆ null    │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ null    ┆ null    │
+        └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
+
+    Note the censoring behavior:
+    - Subject 1: Event A at 5d, evaluated at 7d → True (event occurred within window)
+    - Subject 2: No event A, 12d follow-up, evaluated at 8d → False (adequate follow-up, no event)
+    - Subject 3: Event A at 3d → True for A (event within window, regardless of follow-up).
+      But event B at 15d is outside the 8d window and only 5d of follow-up → null for B (censored).
+      Censoring is applied independently per task.
+    - Subject 4: No events, 15d follow-up, evaluated at 20d → null (censored, insufficient follow-up)
+
+        >>> add_labels_from_true_tte(df_with_followup, handle_censoring=False)  # Legacy behavior
+        shape: (4, 6)
+        ┌────────────┬─────────────────────┬──────────────┬───────────────────┬─────────┬─────────┐
+        │ subject_id ┆ prediction_time     ┆ duration     ┆ max_followup_time ┆ label/A ┆ label/B │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---               ┆ ---     ┆ ---     │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs]      ┆ bool    ┆ bool    │
+        ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ true    ┆ false   │
+        │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ false   ┆ false   │
+        └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
     """
 
     tte_cols = cs.starts_with("tte/")
@@ -283,11 +537,48 @@ def add_labels_from_true_tte(
     start = pl.lit(offset)
     if offset_col is not None:
         start = start + pl.col(offset_col)
-    label_expr = (
-        ((tte_cols > start) & (tte_cols <= start + pl.col("duration")))
-        .fill_null(False)
-        .name.map(_reprefix_fntr("label"))
-    )
+
+    if handle_censoring and max_followup_col in df.columns:
+        # Censoring-aware labeling: 3-way classification
+        # True: event occurred within window
+        # False: event didn't occur AND we have sufficient follow-up
+        # None: insufficient follow-up (censored)
+
+        evaluation_window_end = start + pl.col("duration")
+
+        label_expr = (
+            pl.when(
+                # Event occurred within evaluation window
+                (tte_cols > start) & (tte_cols <= evaluation_window_end)
+            )
+            .then(True)
+            .when(
+                # Event didn't occur AND we have adequate follow-up to make determination
+                tte_cols.is_null() & (pl.col(max_followup_col) >= evaluation_window_end)
+            )
+            .then(False)
+            .when(
+                # Event occurred outside window AND we have adequate follow-up
+                # to know it didn't occur within window
+                tte_cols.is_not_null()
+                & (tte_cols > evaluation_window_end)
+                & (pl.col(max_followup_col) >= evaluation_window_end)
+            )
+            .then(False)
+            .otherwise(
+                # Insufficient follow-up (censored cases)
+                None
+            )
+            .name.map(_reprefix_fntr("label"))
+        )
+
+    else:
+        # Legacy behavior: treat all null TTEs as False (no censoring consideration)
+        label_expr = (
+            ((tte_cols > start) & (tte_cols <= start + pl.col("duration")))
+            .fill_null(False)
+            .name.map(_reprefix_fntr("label"))
+        )
 
     return df.with_columns(label_expr).drop(tte_cols)
 
@@ -390,6 +681,7 @@ def temporal_aucs(
     *,
     offset: timedelta = timedelta(0),
     exclude_history: bool | Collection[str] = False,
+    handle_censoring: bool = True,
 ) -> pl.DataFrame:
     """Compute the AUC over different prediction windows for the first occurrence of a predicate.
 
@@ -415,6 +707,9 @@ def temporal_aucs(
         offset: Offset from the prediction time at which the evaluation window begins.
         exclude_history: If ``True`` or an iterable of task names, rows where the subject has a historical
             instance of the predicate prior to the prediction time are removed for the specified tasks.
+        handle_censoring: If ``True`` (default), cases with insufficient follow-up time are excluded from
+            AUC calculation to prevent bias from treating censored observations as definitive negatives.
+            Requires ``true_tte`` to contain a ``max_followup_time`` column.
 
     Examples:
         >>> duration_grid = [timedelta(days=1), timedelta(days=5), timedelta(days=10), timedelta(days=15)]
@@ -538,6 +833,139 @@ def temporal_aucs(
         │ 5d           ┆ 1.0   ┆ 0.0   │
         │ 10d          ┆ 1.0   ┆ null  │
         └──────────────┴───────┴───────┘
+
+    When ``handle_censoring=True`` and ``max_followup_time`` is provided, subjects with
+    insufficient follow-up for a given task are excluded from that task's AUC only —
+    not from all tasks:
+
+        >>> true_tte_cens = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=5), None, timedelta(days=3)],
+        ...     "tte/B": [timedelta(days=3), None, None],
+        ...     "max_followup_time": [timedelta(days=20), timedelta(days=10), timedelta(days=4)],
+        ... })
+        >>> true_tte_cens
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬──────────────┬───────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A        ┆ tte/B        ┆ max_followup_time │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---          ┆ ---               │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs] ┆ duration[μs]      │
+        ╞════════════╪═════════════════════╪══════════════╪══════════════╪═══════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 5d           ┆ 3d           ┆ 20d               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ null         ┆ null         ┆ 10d               │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 3d           ┆ null         ┆ 4d                │
+        └────────────┴─────────────────────┴──────────────┴──────────────┴───────────────────┘
+        >>> pred_ttes_cens = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [[timedelta(days=4)], [None], [None]],
+        ...     "tte/B": [[timedelta(days=2)], [None], [None]],
+        ... })
+        >>> pred_ttes_cens
+        shape: (3, 4)
+        ┌────────────┬─────────────────────┬────────────────────┬────────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A              ┆ tte/B              │
+        │ ---        ┆ ---                 ┆ ---                ┆ ---                │
+        │ i64        ┆ datetime[μs]        ┆ list[duration[μs]] ┆ list[duration[μs]] │
+        ╞════════════╪═════════════════════╪════════════════════╪════════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ [4d]               ┆ [2d]               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ [null]             ┆ [null]             │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ [null]             ┆ [null]             │
+        └────────────┴─────────────────────┴────────────────────┴────────────────────┘
+
+    Subject 3 has event A at 3d (within the 7d window → True for A, prob 0.0) but no event B
+    with only 4d of follow-up (censored for B). Subject 3 should participate in task A's AUC
+    but be excluded from task B's:
+
+    - Task A (all 3 subjects): positives (sub1=1.0, sub3=0.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win, (0.0, 0.0)→tie. AUC = (1 + 0.5) / 2 = 0.75.
+    - Task B (sub3 excluded): positive (sub1=1.0), negative (sub2=0.0). AUC = 1.0.
+
+        >>> temporal_aucs(
+        ...     true_tte_cens, pred_ttes_cens,
+        ...     duration_grid=[timedelta(days=7)],
+        ...     handle_censoring=True,
+        ... )
+        shape: (1, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 7d           ┆ 0.75  ┆ 1.0   │
+        └──────────────┴───────┴───────┘
+
+    Censoring status can also vary by duration for the same subject. A subject with limited
+    follow-up may be uncensored at short horizons but censored at longer ones:
+
+        >>> true_tte_dur = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=2)],
+        ...     "tte/B": [timedelta(days=1), None, None],
+        ...     "max_followup_time": [timedelta(days=20), timedelta(days=20), timedelta(days=4)],
+        ... })
+        >>> true_tte_dur
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬──────────────┬───────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A        ┆ tte/B        ┆ max_followup_time │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---          ┆ ---               │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs] ┆ duration[μs]      │
+        ╞════════════╪═════════════════════╪══════════════╪══════════════╪═══════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 2d           ┆ 1d           ┆ 20d               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ null         ┆ null         ┆ 20d               │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 2d           ┆ null         ┆ 4d                │
+        └────────────┴─────────────────────┴──────────────┴──────────────┴───────────────────┘
+        >>> pred_ttes_dur = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [[timedelta(days=1)], [None], [None]],
+        ...     "tte/B": [[timedelta(days=1)], [None], [None]],
+        ... })
+        >>> pred_ttes_dur
+        shape: (3, 4)
+        ┌────────────┬─────────────────────┬────────────────────┬────────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A              ┆ tte/B              │
+        │ ---        ┆ ---                 ┆ ---                ┆ ---                │
+        │ i64        ┆ datetime[μs]        ┆ list[duration[μs]] ┆ list[duration[μs]] │
+        ╞════════════╪═════════════════════╪════════════════════╪════════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ [1d]               ┆ [1d]               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ [null]             ┆ [null]             │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ [null]             ┆ [null]             │
+        └────────────┴─────────────────────┴────────────────────┴────────────────────┘
+
+    Subject 3 has event A at 2d and no event B, with only 4d of follow-up.
+    At duration 3d, subject 3 is uncensored for both tasks (4d >= 3d follow-up), so all 3
+    subjects contribute to both AUCs.
+    At duration 10d, subject 3 is still uncensored for A (event at 2d is within window) but
+    censored for B (no event, 4d < 10d), so subject 3 should still contribute to A's AUC.
+
+    Predicted probabilities: sub1 = 1.0 (pred TTE within window), sub2 = 0.0, sub3 = 0.0
+    (pred TTE is null → never occurs → prob 0.0).
+
+    - Duration 3d, task A: positives (sub1=1.0, sub3=0.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win, (0.0, 0.0)→tie. AUC = (1 + 0.5) / 2 = 0.75.
+    - Duration 3d, task B: positive (sub1=1.0), negatives (sub2=0.0, sub3=0.0).
+      Pairs: (1.0, 0.0)→win, (1.0, 0.0)→win. AUC = 2 / 2 = 1.0.
+    - Duration 10d, task A: same 3 subjects, same labels and probs → AUC = 0.75.
+    - Duration 10d, task B: sub3 censored → positive (sub1=1.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win. AUC = 1 / 1 = 1.0.
+
+        >>> temporal_aucs(
+        ...     true_tte_dur, pred_ttes_dur,
+        ...     duration_grid=[timedelta(days=3), timedelta(days=10)],
+        ...     handle_censoring=True,
+        ... )
+        shape: (2, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 3d           ┆ 0.75  ┆ 1.0   │
+        │ 10d          ┆ 0.75  ┆ 1.0   │
+        └──────────────┴───────┴───────┘
     """
 
     ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
@@ -566,7 +994,9 @@ def temporal_aucs(
         pl.lit(duration_grid).alias("duration"),
         pl.lit(offset).alias("offset"),
     ).explode("duration")
-    with_labels = add_labels_from_true_tte(with_duration, offset_col="offset")
+    with_labels = add_labels_from_true_tte(
+        with_duration, offset_col="offset", handle_censoring=handle_censoring
+    )
     with_probs = add_probs_from_pred_ttes(with_labels, offset_col="offset")
 
     if exclude_history:
@@ -577,6 +1007,11 @@ def temporal_aucs(
     dfs_by_task = []
     for task in tasks:
         df_task = with_probs
+
+        # Filter out censored cases per-task: only exclude rows where *this* task's label is null
+        if handle_censoring:
+            df_task = df_task.filter(pl.col(f"label/{task}").is_not_null())
+
         if task in exclude_set and f"history/{task}" in df_task.columns:
             df_task = df_task.filter(~pl.col(f"history/{task}"))
 
@@ -619,7 +1054,7 @@ def temporal_aucs(
     included_cols = []
     for c in out_cols:
         if c not in aucs:
-            print(f"Warning: missing column {c}")
+            logger.warning("Missing column %s", c)
         else:
             included_cols.append(c)
 

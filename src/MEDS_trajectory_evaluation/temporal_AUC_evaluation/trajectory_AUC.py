@@ -51,7 +51,7 @@ def _normalize_predicates(predicates: PREDICATES_T | str | Path) -> PREDICATES_T
 
 def temporal_auc_from_trajectory_files(
     MEDS_df: pl.DataFrame,
-    trajectories: Sequence[str | Path] | Path | str,
+    trajectories: Path | str,
     predicates: PREDICATES_T | str | Path,
     *,
     duration_grid: str | int | None | list[timedelta] = 10000,
@@ -64,7 +64,7 @@ def temporal_auc_from_trajectory_files(
 
     Args:
         MEDS_df: The MEDS dataframe with the reference data.
-        trajectories: Iterable of parquet files or a directory containing them.
+        trajectories: A directory containing generated trajectories files.
         predicates: Mapping of predicate names to configs or a YAML file path.
         duration_grid: Duration grid for :func:`temporal_aucs`.
         AUC_dist_approx: Distribution approximation size.
@@ -80,11 +80,11 @@ def temporal_auc_from_trajectory_files(
 
     preds = _normalize_predicates(predicates)
 
-    if isinstance(trajectories, str | Path):
-        t_root = Path(trajectories)
-        t_files = sorted(t_root.rglob("*.parquet")) if t_root.is_dir() else [t_root]
-    else:
-        t_files = [Path(p) for p in trajectories]
+    if not isinstance(trajectories, str | Path):
+        raise TypeError(f"Expected `trajectories` to be a string or Path, got {type(trajectories)}.")
+
+    t_root = Path(trajectories)
+    t_files = sorted(t_root.rglob("*.parquet")) if t_root.is_dir() else [t_root]
 
     pred_dfs = []
     index_dfs = []
@@ -95,7 +95,7 @@ def temporal_auc_from_trajectory_files(
 
     merged_pred = merge_pred_ttes(pred_dfs)
     index_df = pl.concat(index_dfs, how="vertical").unique(maintain_order=True)
-    true_tte = get_raw_tte(MEDS_df, index_df, preds)
+    true_tte = get_raw_tte(MEDS_df, index_df, preds, include_followup_time=True)
 
     return temporal_aucs(
         true_tte,
