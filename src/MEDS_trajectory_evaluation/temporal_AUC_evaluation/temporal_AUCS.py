@@ -895,6 +895,77 @@ def temporal_aucs(
         ╞══════════════╪═══════╪═══════╡
         │ 7d           ┆ 0.75  ┆ 1.0   │
         └──────────────┴───────┴───────┘
+
+    Censoring status can also vary by duration for the same subject. A subject with limited
+    follow-up may be uncensored at short horizons but censored at longer ones:
+
+        >>> true_tte_dur = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=2), None, timedelta(days=2)],
+        ...     "tte/B": [timedelta(days=1), None, None],
+        ...     "max_followup_time": [timedelta(days=20), timedelta(days=20), timedelta(days=4)],
+        ... })
+        >>> true_tte_dur
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬──────────────┬───────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A        ┆ tte/B        ┆ max_followup_time │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---          ┆ ---               │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs] ┆ duration[μs]      │
+        ╞════════════╪═════════════════════╪══════════════╪══════════════╪═══════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 2d           ┆ 1d           ┆ 20d               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ null         ┆ null         ┆ 20d               │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 2d           ┆ null         ┆ 4d                │
+        └────────────┴─────────────────────┴──────────────┴──────────────┴───────────────────┘
+        >>> pred_ttes_dur = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [[timedelta(days=1)], [None], [None]],
+        ...     "tte/B": [[timedelta(days=1)], [None], [None]],
+        ... })
+        >>> pred_ttes_dur
+        shape: (3, 4)
+        ┌────────────┬─────────────────────┬────────────────────┬────────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A              ┆ tte/B              │
+        │ ---        ┆ ---                 ┆ ---                ┆ ---                │
+        │ i64        ┆ datetime[μs]        ┆ list[duration[μs]] ┆ list[duration[μs]] │
+        ╞════════════╪═════════════════════╪════════════════════╪════════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ [1d]               ┆ [1d]               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ [null]             ┆ [null]             │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ [null]             ┆ [null]             │
+        └────────────┴─────────────────────┴────────────────────┴────────────────────┘
+
+    Subject 3 has event A at 2d and no event B, with only 4d of follow-up.
+    At duration 3d, subject 3 is uncensored for both tasks (4d >= 3d follow-up), so all 3
+    subjects contribute to both AUCs.
+    At duration 10d, subject 3 is still uncensored for A (event at 2d is within window) but
+    censored for B (no event, 4d < 10d), so subject 3 should still contribute to A's AUC.
+
+    Predicted probabilities: sub1 = 1.0 (pred TTE within window), sub2 = 0.0, sub3 = 0.0
+    (pred TTE is null → never occurs → prob 0.0).
+
+    - Duration 3d, task A: positives (sub1=1.0, sub3=0.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win, (0.0, 0.0)→tie. AUC = (1 + 0.5) / 2 = 0.75.
+    - Duration 3d, task B: positive (sub1=1.0), negatives (sub2=0.0, sub3=0.0).
+      Pairs: (1.0, 0.0)→win, (1.0, 0.0)→win. AUC = 2 / 2 = 1.0.
+    - Duration 10d, task A: same 3 subjects, same labels and probs → AUC = 0.75.
+    - Duration 10d, task B: sub3 censored → positive (sub1=1.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win. AUC = 1 / 1 = 1.0.
+
+        >>> temporal_aucs(
+        ...     true_tte_dur, pred_ttes_dur,
+        ...     duration_grid=[timedelta(days=3), timedelta(days=10)],
+        ...     handle_censoring=True,
+        ... )
+        shape: (2, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 3d           ┆ 0.75  ┆ 1.0   │
+        │ 10d          ┆ 0.75  ┆ 1.0   │
+        └──────────────┴───────┴───────┘
     """
 
     ids = [LabelSchema.subject_id_name, LabelSchema.prediction_time_name]
