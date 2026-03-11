@@ -489,12 +489,12 @@ def add_labels_from_true_tte(
         ...         datetime(2021, 1, 1), datetime(2021, 1, 2),
         ...         datetime(2021, 1, 3), datetime(2021, 1, 4)
         ...     ],
-        ...     "tte/A": [timedelta(days=5), timedelta(days=10), None, None],
+        ...     "tte/A": [timedelta(days=5), timedelta(days=10), timedelta(days=3), None],
         ...     "tte/B": [timedelta(days=2), timedelta(days=3), timedelta(days=15), None],
         ...     "duration": [timedelta(days=7), timedelta(days=8), timedelta(days=8), timedelta(days=20)],
         ...     "max_followup_time": [
         ...         timedelta(days=10), timedelta(days=12),
-        ...         timedelta(days=5), timedelta(days=15)  # Subject 3 has insufficient follow-up
+        ...         timedelta(days=5), timedelta(days=15)
         ...     ]
         ... })
         >>> add_labels_from_true_tte(df_with_followup, handle_censoring=True)
@@ -506,14 +506,16 @@ def add_labels_from_true_tte(
         ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
         │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
-        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ null    ┆ null    │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ true    ┆ null    │
         │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ null    ┆ null    │
         └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
 
     Note the censoring behavior:
     - Subject 1: Event A at 5d, evaluated at 7d → True (event occurred within window)
     - Subject 2: No event A, 12d follow-up, evaluated at 8d → False (adequate follow-up, no event)
-    - Subject 3: No event A, but only 5d follow-up, evaluated at 8d → null (censored, insufficient follow-up)
+    - Subject 3: Event A at 3d → True for A (event within window, regardless of follow-up).
+      But event B at 15d is outside the 8d window and only 5d of follow-up → null for B (censored).
+      Censoring is applied independently per task.
     - Subject 4: No events, 15d follow-up, evaluated at 20d → null (censored, insufficient follow-up)
 
         >>> add_labels_from_true_tte(df_with_followup, handle_censoring=False)  # Legacy behavior
@@ -525,7 +527,7 @@ def add_labels_from_true_tte(
         ╞════════════╪═════════════════════╪══════════════╪═══════════════════╪═════════╪═════════╡
         │ 1          ┆ 2021-01-01 00:00:00 ┆ 7d           ┆ 10d               ┆ true    ┆ true    │
         │ 2          ┆ 2021-01-02 00:00:00 ┆ 8d           ┆ 12d               ┆ false   ┆ true    │
-        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ false   ┆ false   │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 8d           ┆ 5d                ┆ true    ┆ false   │
         │ 4          ┆ 2021-01-04 00:00:00 ┆ 20d          ┆ 15d               ┆ false   ┆ false   │
         └────────────┴─────────────────────┴──────────────┴───────────────────┴─────────┴─────────┘
     """
@@ -830,6 +832,68 @@ def temporal_aucs(
         ╞══════════════╪═══════╪═══════╡
         │ 5d           ┆ 1.0   ┆ 0.0   │
         │ 10d          ┆ 1.0   ┆ null  │
+        └──────────────┴───────┴───────┘
+
+    When ``handle_censoring=True`` and ``max_followup_time`` is provided, subjects with
+    insufficient follow-up for a given task are excluded from that task's AUC only —
+    not from all tasks:
+
+        >>> true_tte_cens = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [timedelta(days=5), None, timedelta(days=3)],
+        ...     "tte/B": [timedelta(days=3), None, None],
+        ...     "max_followup_time": [timedelta(days=20), timedelta(days=10), timedelta(days=4)],
+        ... })
+        >>> true_tte_cens
+        shape: (3, 5)
+        ┌────────────┬─────────────────────┬──────────────┬──────────────┬───────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A        ┆ tte/B        ┆ max_followup_time │
+        │ ---        ┆ ---                 ┆ ---          ┆ ---          ┆ ---               │
+        │ i64        ┆ datetime[μs]        ┆ duration[μs] ┆ duration[μs] ┆ duration[μs]      │
+        ╞════════════╪═════════════════════╪══════════════╪══════════════╪═══════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ 5d           ┆ 3d           ┆ 20d               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ null         ┆ null         ┆ 10d               │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ 3d           ┆ null         ┆ 4d                │
+        └────────────┴─────────────────────┴──────────────┴──────────────┴───────────────────┘
+        >>> pred_ttes_cens = pl.DataFrame({
+        ...     "subject_id": [1, 2, 3],
+        ...     "prediction_time": [datetime(2021, 1, 1), datetime(2021, 1, 2), datetime(2021, 1, 3)],
+        ...     "tte/A": [[timedelta(days=4)], [None], [None]],
+        ...     "tte/B": [[timedelta(days=2)], [None], [None]],
+        ... })
+        >>> pred_ttes_cens
+        shape: (3, 4)
+        ┌────────────┬─────────────────────┬────────────────────┬────────────────────┐
+        │ subject_id ┆ prediction_time     ┆ tte/A              ┆ tte/B              │
+        │ ---        ┆ ---                 ┆ ---                ┆ ---                │
+        │ i64        ┆ datetime[μs]        ┆ list[duration[μs]] ┆ list[duration[μs]] │
+        ╞════════════╪═════════════════════╪════════════════════╪════════════════════╡
+        │ 1          ┆ 2021-01-01 00:00:00 ┆ [4d]               ┆ [2d]               │
+        │ 2          ┆ 2021-01-02 00:00:00 ┆ [null]             ┆ [null]             │
+        │ 3          ┆ 2021-01-03 00:00:00 ┆ [null]             ┆ [null]             │
+        └────────────┴─────────────────────┴────────────────────┴────────────────────┘
+
+    Subject 3 has event A at 3d (within the 7d window → True for A, prob 0.0) but no event B
+    with only 4d of follow-up (censored for B). Subject 3 should participate in task A's AUC
+    but be excluded from task B's:
+
+    - Task A (all 3 subjects): positives (sub1=1.0, sub3=0.0), negative (sub2=0.0).
+      Pairs: (1.0, 0.0)→win, (0.0, 0.0)→tie. AUC = (1 + 0.5) / 2 = 0.75.
+    - Task B (sub3 excluded): positive (sub1=1.0), negative (sub2=0.0). AUC = 1.0.
+
+        >>> temporal_aucs(
+        ...     true_tte_cens, pred_ttes_cens,
+        ...     duration_grid=[timedelta(days=7)],
+        ...     handle_censoring=True,
+        ... )
+        shape: (1, 3)
+        ┌──────────────┬───────┬───────┐
+        │ duration     ┆ AUC/A ┆ AUC/B │
+        │ ---          ┆ ---   ┆ ---   │
+        │ duration[μs] ┆ f64   ┆ f64   │
+        ╞══════════════╪═══════╪═══════╡
+        │ 7d           ┆ 0.75  ┆ 1.0   │
         └──────────────┴───────┴───────┘
     """
 
