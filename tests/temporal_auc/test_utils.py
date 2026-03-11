@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -34,7 +34,7 @@ def test_normalize_predicates_from_yaml(tmp_path: Path):
 
 
 def test_merge_pred_ttes():
-    dt = datetime(2021, 1, 1)
+    dt = datetime(2021, 1, 1, tzinfo=UTC)
     df1 = pl.DataFrame(
         {
             "subject_id": [1, 2],
@@ -58,8 +58,8 @@ def test_merge_pred_ttes():
 
 
 def test_get_trajectory_tte():
-    dt1 = datetime(2022, 1, 1)
-    dt2 = datetime(2022, 1, 3)
+    dt1 = datetime(2022, 1, 1, tzinfo=UTC)
+    dt2 = datetime(2022, 1, 3, tzinfo=UTC)
     trajectory_df = pl.DataFrame(
         {
             "subject_id": [1, 1, 1, 1],
@@ -81,7 +81,7 @@ def test_get_trajectory_tte():
 
 
 def test_temporal_auc_from_trajectory_files(monkeypatch, tmp_path: Path):
-    dt = datetime(2022, 1, 1)
+    dt = datetime(2022, 1, 1, tzinfo=UTC)
     MEDS_df = pl.DataFrame(
         {
             "subject_id": [1],
@@ -107,7 +107,7 @@ def test_temporal_auc_from_trajectory_files(monkeypatch, tmp_path: Path):
     )
     monkeypatch.setattr(
         "MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC.get_raw_tte",
-        lambda MEDS_df, index_df, preds: pl.DataFrame(
+        lambda MEDS_df, index_df, preds, **kwargs: pl.DataFrame(
             {"subject_id": [1], "prediction_time": [dt], "tte/A": [timedelta(days=1)]}
         ),
     )
