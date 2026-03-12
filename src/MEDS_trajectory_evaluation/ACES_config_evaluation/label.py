@@ -76,7 +76,7 @@ def get_predicates_and_anchor_realizations(
 
     Args:
         trajectories: A Polars DataFrame containing the input trajectories.
-        zero_shot_task_cfg: The zero-shot task configuration to use for labeling.
+        task_cfg: The task configuration to use for predicate extraction and labeling.
 
     Returns:
         The subtree anchor realizations and predicates extracted from the input trajectories.
@@ -185,7 +185,15 @@ def label_trajectories(
         zero_shot_task_cfg: The zero-shot task configuration to use for labeling.
 
     Returns:
-        A dataframe with the labels each trajectory evaluates to for the given config.
+        A dataframe with one row per (subject_id, prediction_time) pair and the following columns:
+
+        - ``subject_id``: The subject identifier.
+        - ``prediction_time``: The prediction time for the trajectory.
+        - ``valid`` (bool): Whether the trajectory satisfies all inclusion/exclusion criteria
+          in the zero-shot config. ``False`` if any criteria are violated.
+        - ``determinable`` (bool | null): Whether the trajectory contains enough information to
+          determine a label. ``null`` if the trajectory is not valid.
+        - ``label`` (bool | null): The extracted label. ``null`` if not determinable.
     """
 
     subtree_anchor_realizations, predicates_df = get_predicates_and_anchor_realizations(

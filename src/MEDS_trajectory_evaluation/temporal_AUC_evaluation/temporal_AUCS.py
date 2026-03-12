@@ -435,9 +435,11 @@ def add_labels_from_true_tte(
 
     Arguments:
         df: A DataFrame with columns "tte/*" (a time-to-predicate value) and ``duration``
-            (the duration for which the label should be computed). ``offset`` sets a constant
-            offset from the prediction time. If ``offset_col`` is provided, its values are
-            added to ``offset`` on a per-row basis.
+            (the duration for which the label should be computed).
+        offset: A constant offset from the prediction time at which the evaluation window begins.
+            Defaults to zero (evaluation starts at the prediction time).
+        offset_col: If provided, the name of a column whose values are added to ``offset``
+            on a per-row basis to produce a per-row evaluation window start.
         handle_censoring: If ``True`` (default), cases with insufficient follow-up time are labeled
             as ``None`` (censored) rather than ``False``. This requires the ``max_followup_col`` to
             be present in the DataFrame.
@@ -598,8 +600,10 @@ def add_probs_from_pred_ttes(
 
     Arguments:
         df: A DataFrame with columns prefixed with ``tte_pred/`` (each a list of predicted
-            time-to-predicate values) and ``duration``. ``offset`` sets a constant offset from
-            the prediction time. If ``offset_col`` is provided, its values are added to ``offset``
+            time-to-predicate values) and ``duration``.
+        offset: A constant offset from the prediction time at which the evaluation window begins.
+            Defaults to zero.
+        offset_col: If provided, the name of a column whose values are added to ``offset``
             on a per-row basis.
 
     Returns:
@@ -696,7 +700,7 @@ def temporal_aucs(
             indicates that that predicate did not occur.
         duration_grid: The temporal resolution for the windowing grid within which the AUC should be
             computed. If a string, builds a regular grid at the specified resolution (e.g., "1d" for one day).
-            If an integer, it samples that many time-points at at random at which an event is observed in
+            If an integer, it samples that many time-points at random at which an event is observed in
             either the real or predicted data to use as the grid boundary points. If `None`, all change-points
             are used as grid boundary points. If a sequence of `timedelta` objects, these are used as the grid
             boundary points.
@@ -710,6 +714,12 @@ def temporal_aucs(
         handle_censoring: If ``True`` (default), cases with insufficient follow-up time are excluded from
             AUC calculation to prevent bias from treating censored observations as definitive negatives.
             Requires ``true_tte`` to contain a ``max_followup_time`` column.
+
+    Returns:
+        A DataFrame with one row per duration in the grid and columns ``duration`` (the evaluation
+        horizon) and ``AUC/<task>`` for each task/predicate, containing the computed AUROC at that
+        horizon. Missing columns (e.g., when all labels at a horizon are the same class) are omitted
+        with a logged warning.
 
     Examples:
         >>> duration_grid = [timedelta(days=1), timedelta(days=5), timedelta(days=10), timedelta(days=15)]
