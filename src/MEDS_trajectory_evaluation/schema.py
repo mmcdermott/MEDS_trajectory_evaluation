@@ -2,6 +2,7 @@ import pyarrow as pa
 from flexible_schema import Required
 from meds import DataSchema
 
+
 class GeneratedTrajectorySchema(DataSchema):
     """Schema for generated MEDS trajectories.
 

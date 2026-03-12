@@ -10,10 +10,6 @@ output_fp: ???
 # Predictions
 undetermined_probability: 0.0
 
-# Pipeline
-worker: 0
-seed: 1
-
 # Hydra
 log_dir: ${output_fp}.logs
 hydra:

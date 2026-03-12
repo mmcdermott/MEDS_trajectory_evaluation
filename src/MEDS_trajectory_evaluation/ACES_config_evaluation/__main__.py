@@ -6,12 +6,12 @@ from pathlib import Path
 
 import hydra
 import polars as pl
+import pyarrow.parquet as pq
+from meds_evaluation.schema import PredictionSchema
 from MEDS_transforms.mapreduce.mapper import map_over
 from omegaconf import DictConfig
 
 from .aggregate import aggregate_predictions
-from meds_evaluation import schema as eval_schema
-import pyarrow.parquet as pq
 from .label import label_trajectories
 from .task_config import resolve_zero_shot_task_cfg
 from .utils import get_in_out_fps, hash_based_seed
@@ -50,7 +50,7 @@ def aggregate(cfg: DictConfig):
     labels_df = pl.concat(dfs, how="vertical_relaxed") if dfs else pl.DataFrame()
     preds = aggregate_predictions(labels_df, cfg.undetermined_probability)
 
-    eval_schema.validate_binary_classification_schema(preds)
+    PredictionSchema.validate(preds.to_arrow())
 
     out_fp = Path(cfg.output_fp)
     out_fp.parent.mkdir(parents=True, exist_ok=True)
