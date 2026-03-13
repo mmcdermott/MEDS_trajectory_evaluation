@@ -28,8 +28,20 @@ def _normalize_predicates(predicates: PREDICATES_T | str | Path) -> PREDICATES_T
 
     Args:
         predicates: Either a mapping from predicate name to
-            :class:`PlainPredicateConfig` or a path to a YAML file with a
-            ``predicates`` mapping.
+            :class:`PlainPredicateConfig` or a path to a YAML file.
+            The YAML file should contain either a top-level ``predicates``
+            mapping or the predicate definitions directly::
+
+                # Option 1: nested under 'predicates' key
+                predicates:
+                  death:
+                    code: MEDS_DEATH
+                  admission:
+                    code: ADMISSION
+
+                # Option 2: top-level definitions
+                death:
+                  code: MEDS_DEATH
 
     Returns:
         The dictionary of plain predicate configurations.

@@ -1,3 +1,15 @@
+"""Hydra-based CLI entry point for zero-shot ACES trajectory labeling.
+
+Run via the ``ZSACES_label`` console script installed by this package::
+
+    ZSACES_label task.criteria_fp=/path/to/criteria.yaml \\
+        task.predicates_fp=/path/to/predicates.yaml \\
+        trajectories_dir=/path/to/trajectories \\
+        output_dir=/path/to/output
+
+See ``ZSACES_label --help`` for all available options, including labeler relaxations.
+"""
+
 import logging
 import random
 from functools import partial
@@ -23,6 +35,17 @@ CONFIGS = files("MEDS_trajectory_evaluation") / "ACES_config_evaluation" / "conf
 
 @hydra.main(version_base=None, config_path=str(CONFIGS), config_name="_label")
 def label(cfg: DictConfig):
+    """Label trajectory files using a zero-shot ACES task configuration.
+
+    This function reads trajectory Parquet files from ``cfg.trajectories_dir``, applies the
+    zero-shot labeling pipeline, and writes label DataFrames to ``cfg.output_dir`` preserving
+    the directory structure. Files are processed in a deterministic random order controlled
+    by ``cfg.seed`` and ``cfg.worker``.
+
+    Args:
+        cfg: Hydra DictConfig containing ``task``, ``labeler``, ``trajectories_dir``,
+            ``output_dir``, ``seed``, and ``worker`` keys.
+    """
     # 1. Validate and prepare the config for the zero-shot context
     zero_shot_task_cfg = resolve_zero_shot_task_cfg(cfg.task, cfg.labeler)
 

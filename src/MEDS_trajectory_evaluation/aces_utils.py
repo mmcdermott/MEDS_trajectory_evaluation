@@ -441,12 +441,18 @@ def get_MEDS_predicates(
 ) -> pl.DataFrame:
     """Gets the predicate realizations for a MEDS dataframe.
 
-    TODO(mmd): This is very stupid. We should just modify ACES to be able to get the predicates from a MEDS
-    dataframe directly.
+    .. note::
+        This currently round-trips through a temporary Parquet file because ACES's
+        ``get_predicates_df`` expects a file path. A future version should accept
+        DataFrames directly to avoid the I/O overhead.
 
     Args:
-        MEDS_df: The MEDS dataframe to get the predicates from.
-        task_cfg: The task configuration to use for the predicates.
+        MEDS_df: The MEDS dataframe to extract predicates from.
+        task_cfg: The ACES task configuration whose predicate definitions are used.
+
+    Returns:
+        A DataFrame with the original subject and time columns plus one integer column per
+        predicate, indicating how many times each predicate is satisfied at each row.
     """
 
     with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:

@@ -2,14 +2,14 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="static/logo_dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="static/logo_light.svg">
-    <img width="520" height="200" alt="MEDS Logot" src="static/logo_light.svg">
+    <img width="520" height="200" alt="MEDS Logo" src="static/logo_light.svg">
   </picture>
 </p>
 
 # MEDS Trajectory Evaluation
 
 [![PyPI - Version](https://img.shields.io/pypi/v/MEDS_trajectory_evaluation)](https://pypi.org/project/MEDS_trajectory_evaluation/)
-![python](https://img.shields.io/badge/-Python_3.12-blue?logo=python&logoColor=white)
+![python](https://img.shields.io/badge/-Python_3.11+-blue?logo=python&logoColor=white)
 [![codecov](https://codecov.io/gh/mmcdermott/MEDS_trajectory_evaluation/graph/badge.svg?token=CPLS7DPPAK)](https://codecov.io/gh/mmcdermott/MEDS_trajectory_evaluation)
 [![tests](https://github.com/mmcdermott/MEDS_trajectory_evaluation/actions/workflows/tests.yaml/badge.svg)](https://github.com/mmcdermott/MEDS_trajectory_evaluation/actions/workflows/tests.yml)
 [![code-quality](https://github.com/mmcdermott/MEDS_trajectory_evaluation/actions/workflows/code-quality-main.yaml/badge.svg)](https://github.com/mmcdermott/MEDS_trajectory_evaluation/actions/workflows/code-quality-main.yaml)
@@ -124,7 +124,7 @@ If you have a simple definition of an "event" (defined as something expressible 
 ) and you want to understand how well a set of trajectories are able to predict whether or not the _first_
 incidence of that event after the prediction time occurs within a given (set of) time horizon(s), potentially
 with an offset, you can use this package to efficiently compute AUROCs for all predicates and horizons as
-follows: **TODO UPDATE**
+follows:
 
 ```python
 temporal_aucs(true_tte_df, pred_tte_df, [timedelta(days=1), timedelta(days=7)])
@@ -419,7 +419,7 @@ use with our examples:
 
 ```
 
-Even without any relaxations, the zero-shot conversion will naturally prunes the tree to include only those
+Even without any relaxations, the zero-shot conversion naturally prunes the tree to include only those
 nodes between the prediction time window and the label window or after the label window.
 
 ```python
@@ -494,7 +494,7 @@ input.end; **Prediction Time**
 
 ```
 
-Here, this is may be a mistake, as it will classify as negative trajectories who die within 1 day after
+Here, this may be a mistake, as it will classify as negative trajectories who die within 1 day after
 discharge (whereas previously such trajectories would be excluded). However, in concert with gap window
 absorption, this may be suitable.
 
