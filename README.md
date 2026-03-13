@@ -142,7 +142,7 @@ shape: (2, 3)
 ### 2.C Full ACES Task Labeling
 
 ```bash
-ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
+MTE_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
     output_dir=$OUTPUT_DIR trajectories_dir=$TRAJECTORIES_DIR
 ```
 
