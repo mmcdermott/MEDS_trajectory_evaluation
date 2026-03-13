@@ -50,8 +50,8 @@ def aggregate(cfg: DictConfig):
     labels_df = pl.concat(dfs, how="vertical_relaxed") if dfs else pl.DataFrame()
     preds = aggregate_predictions(labels_df, cfg.undetermined_probability)
 
-    PredictionSchema.validate(preds.to_arrow())
+    preds_table = PredictionSchema.align(preds.to_arrow())
 
     out_fp = Path(cfg.output_fp)
     out_fp.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(preds.to_arrow(), out_fp)
+    pq.write_table(preds_table, out_fp)

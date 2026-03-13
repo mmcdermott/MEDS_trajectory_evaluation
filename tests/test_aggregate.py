@@ -147,7 +147,7 @@ class TestAggregateOutputSchema:
         )
         result = aggregate_predictions(df)
         # Should not raise
-        PredictionSchema.validate(result.to_arrow())
+        PredictionSchema.align(result.to_arrow())
 
     def test_fallback_output_validates_against_prediction_schema(self):
         df = _labels_df(
@@ -156,7 +156,7 @@ class TestAggregateOutputSchema:
             ]
         )
         result = aggregate_predictions(df, undetermined_probability=0.5)
-        PredictionSchema.validate(result.to_arrow())
+        PredictionSchema.align(result.to_arrow())
 
 
 class TestAggregateEdgeCases:
