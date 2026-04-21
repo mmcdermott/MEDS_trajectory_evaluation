@@ -185,21 +185,29 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
     ids = [c for c in df.columns if c.split("/")[0] not in {"true", "false"}]
 
     structs = [
-        pl.struct(true=pl.col(f"true/{t}"), false=pl.col(f"false/{t}")).alias(f"dist/{t}") for t in tasks
+        pl.struct(
+            true=pl.col(f"true/{t}").cast(pl.List(pl.Float64)),
+            false=pl.col(f"false/{t}").cast(pl.List(pl.Float64)),
+        ).alias(f"dist/{t}")
+        for t in tasks
     ]
 
     df = df.select(*ids, *structs).with_row_index("__idx")
 
     dists = cs.starts_with("dist/")
-    T = dists.struct.field("true")
-    F = dists.struct.field("false")
+    # polars 1.31+ drops the parent selector name when applying `.struct.field(...)`; `.name.keep()`
+    # restores the "dist/<task>" name so downstream `.name.map(_reprefix_fntr("AUC"))` can find it.
+    T = dists.struct.field("true").name.keep()
+    F = dists.struct.field("false").name.keep()
 
     num_pairs = T.list.len() * F.list.len()
     num_F_lt_T_pairs = F.list.explode().search_sorted(T.list.explode(), side="left").sum().over("__idx")
     num_F_lte_T_pairs = F.list.explode().search_sorted(T.list.explode(), side="right").sum().over("__idx")
 
     AUC = ((num_F_lt_T_pairs + num_F_lte_T_pairs) / 2) / num_pairs
-    AUC = pl.when(AUC.is_infinite() | AUC.is_nan()).then(None).otherwise(AUC)
+    # polars 1.31+ derives the output name from the first `then(None)`, losing the AUC column name;
+    # putting AUC in `then` preserves name inheritance into the subsequent `.name.map(...)`.
+    AUC = pl.when(AUC.is_finite()).then(AUC).otherwise(None)
 
     return df.select(*ids, AUC.name.map(_reprefix_fntr("AUC")))
 
@@ -359,8 +367,8 @@ def random_grid(ttes_df: pl.DataFrame, n: int | None) -> pl.Series:
         shape: (3,)
         Series: 'tte/A' [duration[μs]]
         [
+            1d
             2d
-            3d
             5d
         ]
         >>> random_grid(pl.DataFrame({"x": [1]}), None)
@@ -571,6 +579,9 @@ def add_labels_from_true_tte(
                 # Insufficient follow-up (censored cases)
                 None
             )
+            # polars 1.31+ names `when(...).then(...).otherwise(None)` as "literal"; `.name.keep()`
+            # restores the "tte/<task>" name from the selector root before the prefix rewrite.
+            .name.keep()
             .name.map(_reprefix_fntr("label"))
         )
 
