@@ -2,6 +2,7 @@ import math
 from datetime import UTC, datetime, timedelta
 
 import polars as pl
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -9,19 +10,23 @@ from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import df_
 from tests.helpers import _manual_auc
 
 
-def test_temporal_aucs_handles_high_prevalence_task_at_single_duration():
+def test_temporal_aucs_raises_clear_error_when_no_negatives_at_any_duration():
     """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/31.
 
-    The `temporal_aucs` docstring guarantees: "Missing columns (e.g., when all labels at a
-    horizon are the same class) are omitted with a logged warning." This holds for the
-    "all-negatives" case but not for the symmetric "all-positives" case — `df_AUC` crashes
-    with `ColumnNotFoundError: unable to find column "false/<task>"`.
+    Per maintainer guidance: the "all-positives across all durations" case is a real
+    error — you cannot compute AUC without any negatives. So `df_AUC` (and therefore
+    `temporal_aucs`) *should* raise here. The bug is that it raises an inscrutable
+    polars `ColumnNotFoundError` mentioning an internal `false/<task>` column name
+    rather than a domain-level "no negative samples" error.
 
-    Real-world scenario: predicting "any inpatient encounter within 1 year" for an elderly
-    cohort. By a long enough horizon, every patient has had an encounter; at that single
-    horizon, every label is True so the pivot produces only `true/encounter`, not
-    `false/encounter`. A reasonable user request — "give me the year-1 AUC" — therefore
-    crashes with no useful diagnostic.
+    This test pins both behaviors: an error is raised, and the error message points at
+    the *task* (here `encounter`) and the actual problem (no negatives), not at an
+    internal column name.
+
+    Real-world scenario: predicting "any inpatient encounter within 1 year" for an
+    elderly cohort. By a long enough horizon, every patient has had an encounter; at
+    a single 365d horizon, every label is True. The user deserves a "no negatives for
+    task `encounter` at duration 365d" message rather than a polars internals trace.
     """
 
     base = datetime(2023, 1, 1, tzinfo=UTC)
@@ -39,7 +44,6 @@ def test_temporal_aucs_handles_high_prevalence_task_at_single_duration():
             "max_followup_time": [timedelta(days=400)] * 4,
         }
     )
-    # One predicted trajectory per subject (e.g., a single autoregressive sample).
     pred_ttes = pl.DataFrame(
         {
             "subject_id": [1, 2, 3, 4],
@@ -54,32 +58,53 @@ def test_temporal_aucs_handles_high_prevalence_task_at_single_duration():
     )
 
     # Single horizon at 365d — by which point every subject is positive.
-    result = temporal_aucs(true_tte, pred_ttes, [timedelta(days=365)])
+    with pytest.raises(Exception) as excinfo:
+        temporal_aucs(true_tte, pred_ttes, [timedelta(days=365)])
 
-    # The call must not crash. AUC at this horizon is undefined (no negatives), so the
-    # contract is "row exists, AUC is null OR column omitted" — matching the all-negatives
-    # case the docstring already advertises.
-    assert "duration" in result.columns
-    assert result["duration"].to_list() == [timedelta(days=365)]
-    if "AUC/encounter" in result.columns:
-        assert result["AUC/encounter"][0] is None
+    msg = str(excinfo.value).lower()
+    # The current bug: the user sees the internal `false/encounter` column name. After
+    # the fix the message should mention the task and the domain-level cause, not a
+    # column name from the pivot internals.
+    assert "false/encounter" not in str(excinfo.value), (
+        "polars's raw ColumnNotFoundError leaks the internal `false/<task>` pivot "
+        "column name (#31). Fix should raise a task-level error referencing the task "
+        "and the absence of negative samples."
+    )
+    assert "encounter" in msg, "error should name the task whose AUC could not be computed"
+    assert any(word in msg for word in ("negative", "no negatives", "single class", "only positives")), (
+        "error should indicate the cause: no negative samples available"
+    )
 
 
-def test_df_AUC_handles_task_with_only_true_column():
-    """Direct unit test for the `df_AUC` precondition violated by issue #31.
+def test_df_AUC_returns_none_for_task_with_empty_false_list():
+    """Companion test for #31: empty *false* list (column present, length 0).
 
-    `df_AUC` derives the task list from `true/*` columns and unconditionally references
-    `pl.col(f"false/{t}")`. Inputs where a task has positives at a horizon but no negatives
-    at that horizon produce only `true/<t>` in the pivot — `df_AUC` should treat that as an
-    undefined-AUC case (return None / drop), not crash.
+    The maintainer's clarification on PR #36: "the case where the false column is
+    present but lists are length 0" is *distinct* from the "false column entirely
+    missing" case — empty lists are a normal "no negatives at this duration but the
+    column structure is intact" condition, and `df_AUC` should return None for that
+    row, not crash.
+
+    This test verifies the supported case: a task `A` has both `true/A` and `false/A`,
+    but for one row the negatives list happens to be empty. The computed AUC for that
+    row should be null.
     """
 
-    df = pl.DataFrame({"task": ["task1"], "true/A": [[0.5, 0.7, 0.9]]})
-    # Currently raises ColumnNotFoundError; should produce a result row with AUC/A null.
+    df = pl.DataFrame(
+        {
+            "task": ["row_with_negs", "row_without_negs"],
+            "true/A": [[0.3, 0.7], [0.5, 0.9]],
+            "false/A": [[0.2, 0.4], []],  # second row has no negatives
+        }
+    )
     result = df_AUC(df)
-    assert result.height == 1
-    if "AUC/A" in result.columns:
-        assert result["AUC/A"][0] is None
+
+    assert "AUC/A" in result.columns
+    aucs = result["AUC/A"].to_list()
+    # First row: positives [0.3, 0.7], negatives [0.2, 0.4]; 3 of 4 ordered pairs win.
+    assert aucs[0] == 0.75
+    # Second row: 2 positives, 0 negatives -> AUC undefined -> None
+    assert aucs[1] is None
 
 
 @st.composite
