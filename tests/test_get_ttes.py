@@ -10,6 +10,66 @@ from hypothesis import strategies as st
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.get_ttes import get_raw_tte
 
 
+def test_history_false_for_subject_with_no_matching_predicate_events():
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/30.
+
+    Real-world scenario: an ICU 30-day mortality cohort. A "diabetes" predicate is computed
+    for every patient at admission. Most patients in a cohort like this have *no* prior
+    diabetes diagnosis at all — those subjects are entirely absent from the predicate-times
+    intermediate (since `get_all_predicate_times` filters via `any_horizontal` over predicates).
+
+    Pre-fix: the right-join in `get_raw_tte` re-introduced those subjects with `null`
+    predicate-list cells, and `null.explode().search_sorted(...)` returned 1 — flagging
+    them as if they had history. This silently corrupted any downstream `exclude_history`
+    cohort filter. The fix masks `idx > 0` by `list.len() > 0` so empty/null lists
+    yield `False`.
+    """
+
+    # Three patients admitted on the same day. Two have prior diabetes events; one doesn't.
+    # Subject 30 has only an unrelated `LAB_GLUCOSE` event in MEDS — no diabetes events
+    # at all. They are exactly the case `get_all_predicate_times` drops before the right-join.
+    MEDS_df = pl.DataFrame(
+        {
+            "subject_id": [10, 10, 20, 30, 30],
+            "time": [
+                datetime(2022, 1, 1, tzinfo=UTC),  # subj 10: prior diabetes dx
+                datetime(2022, 6, 1, tzinfo=UTC),  # subj 10: post-admission diabetes
+                datetime(2022, 1, 15, tzinfo=UTC),  # subj 20: prior diabetes dx
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 30: only unrelated lab events
+                datetime(2022, 6, 15, tzinfo=UTC),
+            ],
+            "code": [
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "LAB_GLUCOSE",
+                "LAB_GLUCOSE",
+            ],
+        }
+    )
+
+    # All three are admitted (predicted on) 2022-04-01.
+    index_df = pl.DataFrame(
+        {
+            "subject_id": [10, 20, 30],
+            "prediction_time": [datetime(2022, 4, 1, tzinfo=UTC)] * 3,
+        }
+    )
+
+    predicates = {"diabetes": PlainPredicateConfig(code="ICD10//E11.9")}
+
+    result = get_raw_tte(MEDS_df, index_df, predicates, include_history=True)
+    history_by_subject = dict(
+        zip(result["subject_id"].to_list(), result["history/diabetes"].to_list(), strict=False)
+    )
+
+    assert history_by_subject[10] is True, "subject 10 had a prior diabetes dx"
+    assert history_by_subject[20] is True, "subject 20 had a prior diabetes dx"
+    assert history_by_subject[30] is False, (
+        "subject 30 has zero diabetes events of any kind — `history/diabetes` must be False"
+    )
+
+
 def _duration_tds(min_days: int, max_days: int) -> st.SearchStrategy[timedelta]:
     return st.integers(min_value=min_days, max_value=max_days).map(lambda d: timedelta(days=d))
 
@@ -50,7 +110,7 @@ def _raw_inputs(draw):
             index_rows.append({"subject_id": s, "prediction_time": base_time + d})
     index_df = pl.DataFrame(index_rows)
 
-    # compute manual ttes and histories replicating get_raw_tte logic
+    # compute manual ttes and histories replicating get_raw_tte semantics
     manual = {}
     has_none = False
     for row in index_rows:
@@ -58,13 +118,12 @@ def _raw_inputs(draw):
         pt = row["prediction_time"]
         for task in tasks:
             events = sorted(events_by_subject_task.get((s, task), []))
-            if not events:
-                idx = 1
-            else:
-                idx = 0
-                while idx < len(events) and events[idx] <= pt:
-                    idx += 1
-            history = idx > 0
+            idx = 0
+            while idx < len(events) and events[idx] <= pt:
+                idx += 1
+            # history = "any predicate event at or before the prediction time"; subjects
+            # with no events for this predicate (empty or null list) have history=False.
+            history = idx > 0 and len(events) > 0
             if idx < len(events):
                 tte = events[idx] - pt
             else:

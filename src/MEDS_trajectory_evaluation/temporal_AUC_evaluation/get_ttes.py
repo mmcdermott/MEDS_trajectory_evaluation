@@ -183,7 +183,7 @@ def get_raw_tte(
         │            ┆ 00:00:00     ┆              ┆             ┆             ┆             ┆             │
         │ 1          ┆ 2022-01-03   ┆ true         ┆ true        ┆ 23h         ┆ null        ┆ 23h         │
         │            ┆ 01:00:00     ┆              ┆             ┆             ┆             ┆             │
-        │ 2          ┆ 2022-01-01   ┆ true         ┆ true        ┆ null        ┆ null        ┆ 0µs         │
+        │ 2          ┆ 2022-01-01   ┆ true         ┆ false       ┆ null        ┆ null        ┆ 0µs         │
         │            ┆ 00:00:00     ┆              ┆             ┆             ┆             ┆             │
         │ 3          ┆ 2022-01-01   ┆ true         ┆ true        ┆ null        ┆ null        ┆ -7303d      │
         │            ┆ 00:00:00     ┆              ┆             ┆             ┆             ┆             │
@@ -244,7 +244,16 @@ def get_raw_tte(
 
     history_exprs = []
     if include_history:
-        history_exprs = [(pl.col(f"{name}/idx") > 0).alias(f"history/{name}") for name in predicates]
+        # `idx > 0` alone is unsafe: subjects with an empty or null predicate list (the
+        # latter introduced by the right-join when a subject is absent from
+        # `get_all_predicate_times`) explode to a single null whose `search_sorted` index
+        # is 1 — falsely flagging them as having prior events. Mask by `list.len() > 0`.
+        history_exprs = [
+            ((pl.col(f"{name}/idx") > 0) & (pl.col(name).list.len() > 0))
+            .fill_null(False)
+            .alias(f"history/{name}")
+            for name in predicates
+        ]
 
     # Add follow-up time calculation if requested
     followup_exprs = []
