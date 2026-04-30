@@ -1,11 +1,85 @@
 import math
+from datetime import UTC, datetime, timedelta
 
 import polars as pl
 from hypothesis import given
 from hypothesis import strategies as st
 
-from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import df_AUC
+from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import df_AUC, temporal_aucs
 from tests.helpers import _manual_auc
+
+
+def test_temporal_aucs_handles_high_prevalence_task_at_single_duration():
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/31.
+
+    The `temporal_aucs` docstring guarantees: "Missing columns (e.g., when all labels at a
+    horizon are the same class) are omitted with a logged warning." This holds for the
+    "all-negatives" case but not for the symmetric "all-positives" case — `df_AUC` crashes
+    with `ColumnNotFoundError: unable to find column "false/<task>"`.
+
+    Real-world scenario: predicting "any inpatient encounter within 1 year" for an elderly
+    cohort. By a long enough horizon, every patient has had an encounter; at that single
+    horizon, every label is True so the pivot produces only `true/encounter`, not
+    `false/encounter`. A reasonable user request — "give me the year-1 AUC" — therefore
+    crashes with no useful diagnostic.
+    """
+
+    base = datetime(2023, 1, 1, tzinfo=UTC)
+    # Four elderly patients, each with one inpatient encounter within the year.
+    true_tte = pl.DataFrame(
+        {
+            "subject_id": [1, 2, 3, 4],
+            "prediction_time": [base] * 4,
+            "tte/encounter": [
+                timedelta(days=15),
+                timedelta(days=120),
+                timedelta(days=200),
+                timedelta(days=350),
+            ],
+            "max_followup_time": [timedelta(days=400)] * 4,
+        }
+    )
+    # One predicted trajectory per subject (e.g., a single autoregressive sample).
+    pred_ttes = pl.DataFrame(
+        {
+            "subject_id": [1, 2, 3, 4],
+            "prediction_time": [base] * 4,
+            "tte/encounter": [
+                [timedelta(days=10)],
+                [timedelta(days=100)],
+                [timedelta(days=180)],
+                [timedelta(days=300)],
+            ],
+        }
+    )
+
+    # Single horizon at 365d — by which point every subject is positive.
+    result = temporal_aucs(true_tte, pred_ttes, [timedelta(days=365)])
+
+    # The call must not crash. AUC at this horizon is undefined (no negatives), so the
+    # contract is "row exists, AUC is null OR column omitted" — matching the all-negatives
+    # case the docstring already advertises.
+    assert "duration" in result.columns
+    assert result["duration"].to_list() == [timedelta(days=365)]
+    if "AUC/encounter" in result.columns:
+        assert result["AUC/encounter"][0] is None
+
+
+def test_df_AUC_handles_task_with_only_true_column():
+    """Direct unit test for the `df_AUC` precondition violated by issue #31.
+
+    `df_AUC` derives the task list from `true/*` columns and unconditionally references
+    `pl.col(f"false/{t}")`. Inputs where a task has positives at a horizon but no negatives
+    at that horizon produce only `true/<t>` in the pivot — `df_AUC` should treat that as an
+    undefined-AUC case (return None / drop), not crash.
+    """
+
+    df = pl.DataFrame({"task": ["task1"], "true/A": [[0.5, 0.7, 0.9]]})
+    # Currently raises ColumnNotFoundError; should produce a result row with AUC/A null.
+    result = df_AUC(df)
+    assert result.height == 1
+    if "AUC/A" in result.columns:
+        assert result["AUC/A"][0] is None
 
 
 @st.composite
