@@ -10,6 +10,68 @@ from hypothesis import strategies as st
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.get_ttes import get_raw_tte
 
 
+def test_history_false_for_subject_with_no_matching_predicate_events():
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/30.
+
+    Real-world scenario: an ICU 30-day mortality cohort. A "diabetes" predicate is computed
+    for every patient at admission. Most patients in a cohort like this have *no* prior
+    diabetes diagnosis at all — those subjects are entirely absent from the predicate-times
+    intermediate (since `get_all_predicate_times` filters via `any_horizontal` over predicates).
+
+    The right-join in `get_raw_tte` re-introduces those subjects with `null` predicate-list
+    cells. `null.explode().search_sorted(prediction_time, side="right")` returns 1, so the
+    `idx > 0` history check evaluates to True — flagging patients with zero prior diabetes
+    events as if they had history. This silently corrupts any downstream `exclude_history`
+    cohort filter (see #33).
+    """
+
+    # Three patients admitted on the same day. Two have prior diabetes events; one doesn't.
+    # Note: subject 30 has only an unrelated `LAB_GLUCOSE` event in MEDS — no diabetes events
+    # at all. They are exactly the case `get_all_predicate_times` drops before the right-join.
+    MEDS_df = pl.DataFrame(
+        {
+            "subject_id": [10, 10, 20, 30, 30],
+            "time": [
+                datetime(2022, 1, 1, tzinfo=UTC),  # subj 10: prior diabetes dx
+                datetime(2022, 6, 1, tzinfo=UTC),  # subj 10: post-admission diabetes
+                datetime(2022, 1, 15, tzinfo=UTC),  # subj 20: prior diabetes dx
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 30: only unrelated lab events
+                datetime(2022, 6, 15, tzinfo=UTC),
+            ],
+            "code": [
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "LAB_GLUCOSE",
+                "LAB_GLUCOSE",
+            ],
+        }
+    )
+
+    # All three are admitted (predicted on) 2022-04-01 — the cohort index timestamp.
+    index_df = pl.DataFrame(
+        {
+            "subject_id": [10, 20, 30],
+            "prediction_time": [datetime(2022, 4, 1, tzinfo=UTC)] * 3,
+        }
+    )
+
+    predicates = {"diabetes": PlainPredicateConfig(code="ICD10//E11.9")}
+
+    result = get_raw_tte(MEDS_df, index_df, predicates, include_history=True)
+    history_by_subject = dict(
+        zip(result["subject_id"].to_list(), result["history/diabetes"].to_list(), strict=False)
+    )
+
+    # Subjects 10 and 20 have prior diabetes events; subject 30 does not.
+    assert history_by_subject[10] is True, "subject 10 had a prior diabetes dx"
+    assert history_by_subject[20] is True, "subject 20 had a prior diabetes dx"
+    assert history_by_subject[30] is False, (
+        "subject 30 has zero diabetes events of any kind — `history/diabetes` must be False, "
+        "not True (the bug in #30)"
+    )
+
+
 def _duration_tds(min_days: int, max_days: int) -> st.SearchStrategy[timedelta]:
     return st.integers(min_value=min_days, max_value=max_days).map(lambda d: timedelta(days=d))
 
