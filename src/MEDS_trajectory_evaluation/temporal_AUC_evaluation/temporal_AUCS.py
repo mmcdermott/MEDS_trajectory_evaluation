@@ -133,7 +133,8 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
         │ task2 ┆ 0.75     │
         └───────┴──────────┘
 
-    If we have an empty distribution, the AUC returned is `null`:
+    If a per-row distribution is empty (no positives or no negatives at *that* row), the AUC for that row
+    is ``null``:
 
         >>> df_empty = pl.DataFrame({
         ...     "task": ["task1", "task2", "task3"],
@@ -151,6 +152,20 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
         │ task2 ┆ null     │
         │ task3 ┆ null     │
         └───────┴──────────┘
+
+    However, if a task is missing the ``true/<task>`` *column* entirely (no positive samples at any row)
+    or the ``false/<task>`` *column* entirely (no negative samples at any row), the AUC is undefined and
+    a ``ValueError`` is raised that names the task and the missing side. This is distinct from the
+    per-row empty-list case above:
+
+        >>> df_AUC(pl.DataFrame({"task": ["t"], "true/A": [[0.5, 0.7]]}))
+        Traceback (most recent call last):
+            ...
+        ValueError: Cannot compute AUC for task 'A': no negative samples (missing 'false/A' column).
+        >>> df_AUC(pl.DataFrame({"task": ["t"], "false/A": [[0.5, 0.7]]}))
+        Traceback (most recent call last):
+            ...
+        ValueError: Cannot compute AUC for task 'A': no positive samples (missing 'true/A' column).
 
     Ties should contribute 1/2 an ordered pair to the AUC. In the example below, Task 1 has true probabilities
     of [0.2, 0.3, 0.5] and false probabilities of [0.2, 0.3, 0.3], which results in:
@@ -181,7 +196,21 @@ def df_AUC(df: pl.DataFrame) -> pl.DataFrame:
         └───────┴──────────┘
     """
 
-    tasks = [c.split("/")[1] for c in df.columns if c.startswith("true/")]
+    true_tasks = {c.removeprefix("true/") for c in df.columns if c.startswith("true/")}
+    false_tasks = {c.removeprefix("false/") for c in df.columns if c.startswith("false/")}
+    only_true = sorted(true_tasks - false_tasks)
+    only_false = sorted(false_tasks - true_tasks)
+    if only_true:
+        t = only_true[0]
+        raise ValueError(
+            f"Cannot compute AUC for task {t!r}: no negative samples (missing 'false/{t}' column)."
+        )
+    if only_false:
+        t = only_false[0]
+        raise ValueError(
+            f"Cannot compute AUC for task {t!r}: no positive samples (missing 'true/{t}' column)."
+        )
+    tasks = sorted(true_tasks)
     ids = [c for c in df.columns if c.split("/")[0] not in {"true", "false"}]
 
     structs = [
@@ -1060,7 +1089,7 @@ def temporal_aucs(
         task = task[1:-1]  # Remove the quotes around the task name
         return f"{label}/{task}"
 
-    aucs = df_AUC(
+    pivoted = (
         df.group_by("duration", "task", "label")
         .agg(prob_dist_expr.sort().name.keep())
         .pivot(on=["label", "task"], index="duration", values="prob", aggregate_function=None)
@@ -1068,13 +1097,19 @@ def temporal_aucs(
         .sort("duration", descending=False)
     )
 
-    out_cols = [f"AUC/{task}" for task in tasks]
+    # `df_AUC` requires balanced `true/<task>` and `false/<task>` columns. Any task whose pivot output
+    # is missing one side has no positives or no negatives at any duration in this evaluation, so its
+    # AUC is undefined; drop those tasks here with a warning rather than letting df_AUC raise.
+    has_true = {c.removeprefix("true/") for c in pivoted.columns if c.startswith("true/")}
+    has_false = {c.removeprefix("false/") for c in pivoted.columns if c.startswith("false/")}
+    drop_cols: list[str] = []
+    for t in sorted((has_true ^ has_false) & {*has_true, *has_false}):
+        side = "negatives" if t in has_true else "positives"
+        logger.warning("Dropping task %r from AUC output: no %s at any duration in this evaluation.", t, side)
+        drop_cols.extend(c for c in (f"true/{t}", f"false/{t}") if c in pivoted.columns)
+    pivoted = pivoted.drop(*drop_cols)
 
-    included_cols = []
-    for c in out_cols:
-        if c not in aucs:
-            logger.warning("Missing column %s", c)
-        else:
-            included_cols.append(c)
+    aucs = df_AUC(pivoted)
 
-    return aucs.select("duration", *included_cols)  # re-order columns
+    out_cols = [f"AUC/{task}" for task in tasks if f"AUC/{task}" in aucs.columns]
+    return aucs.select("duration", *out_cols)  # re-order columns
