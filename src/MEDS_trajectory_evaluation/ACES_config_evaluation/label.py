@@ -195,7 +195,6 @@ def label_trajectories(
           determine a label. ``null`` if the trajectory is not valid.
         - ``label`` (bool | null): The extracted label. ``null`` if not determinable.
     """
-
     subtree_anchor_realizations, predicates_df = get_predicates_and_anchor_realizations(
         trajectories, zero_shot_task_cfg
     )
