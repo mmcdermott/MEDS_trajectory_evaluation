@@ -416,7 +416,6 @@ def _resolve_node(
             ...
         ValueError: Exactly one of window_name or root_node must be provided.
     """
-
     if (window_name is None and root_node is None) or (window_name is not None and root_node is not None):
         raise ValueError("Exactly one of window_name or root_node must be provided.")
 
@@ -454,7 +453,6 @@ def get_MEDS_predicates(
         A DataFrame with the original subject and time columns plus one integer column per
         predicate, indicating how many times each predicate is satisfied at each row.
     """
-
     with tempfile.NamedTemporaryFile(suffix=".parquet") as data_fp:
         MEDS_df.write_parquet(data_fp.name, use_pyarrow=True)
         return get_predicates_df(task_cfg, DictConfig({"path": data_fp.name, "standard": "meds"}))
