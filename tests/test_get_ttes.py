@@ -32,11 +32,12 @@ def _raw_inputs(draw):
             events_by_subject_task[(s, task)] = times
             for t in times:
                 meds_rows.append({"subject_id": s, "time": t, "code": task})
-        # ensure each subject has at least one event to avoid null joins
-        if all(len(events_by_subject_task[(s, t)]) == 0 for t in tasks):
-            events_by_subject_task[(s, tasks[0])] = [base_time + timedelta(days=1)]
-            meds_rows.append({"subject_id": s, "time": base_time + timedelta(days=1), "code": tasks[0]})
 
+    if not meds_rows:
+        # `get_all_predicate_times` requires non-empty input; the right-join path with
+        # subjects entirely absent from MEDS is exercised whenever any individual subject
+        # has zero matching events, which already happens for any non-trivial draw.
+        assume(False)
     MEDS_df = pl.DataFrame(meds_rows)
 
     # generate index dataframe
@@ -50,7 +51,7 @@ def _raw_inputs(draw):
             index_rows.append({"subject_id": s, "prediction_time": base_time + d})
     index_df = pl.DataFrame(index_rows)
 
-    # compute manual ttes and histories replicating get_raw_tte logic
+    # compute manual ttes and histories replicating get_raw_tte semantics
     manual = {}
     has_none = False
     for row in index_rows:
@@ -59,17 +60,20 @@ def _raw_inputs(draw):
         for task in tasks:
             events = sorted(events_by_subject_task.get((s, task), []))
             if not events:
-                idx = 1
-            else:
-                idx = 0
-                while idx < len(events) and events[idx] <= pt:
-                    idx += 1
-            history = idx > 0
-            if idx < len(events):
-                tte = events[idx] - pt
-            else:
+                # If no events of this task for this subject, history is False and tte is null.
+                history = False
                 tte = None
                 has_none = True
+            else:
+                # history is True iff any event occurred at or before the prediction time.
+                history = min(events) <= pt
+                # tte is the time until the first event strictly after the prediction time.
+                future = [e for e in events if e > pt]
+                if future:
+                    tte = future[0] - pt
+                else:
+                    tte = None
+                    has_none = True
             manual[(s, pt, task)] = (tte, history)
     assume(has_none)
 
