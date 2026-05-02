@@ -15,7 +15,128 @@ from MEDS_trajectory_evaluation.temporal_AUC_evaluation.get_ttes import (
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import (
     temporal_aucs,
 )
+from MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC import (
+    temporal_auc_from_trajectory_files,
+)
 from tests.helpers import _manual_auc
+
+
+def test_temporal_auc_from_trajectory_files_exclude_history_actually_filters(tmp_path):
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/33.
+
+    `temporal_auc_from_trajectory_files` accepts `exclude_history` and passes it to
+    `temporal_aucs`, but never asks `get_raw_tte` to compute the `history/<task>` columns
+    that the filter depends on. The filter at `temporal_AUCS.py:1036` is gated on
+    `f"history/{task}" in df_task.columns`, so it silently no-ops — the user sees no
+    error, no warning, and the same AUC they would have gotten without `exclude_history`.
+
+    Real-world scenario: predicting *first* diabetes diagnosis. Excluding patients with
+    prior diabetes is the entire point of the feature — those patients are not in the
+    population the model is meant to address.
+    """
+
+    base = datetime(2022, 1, 1, tzinfo=UTC)  # noqa: F841 — kept for reading clarity
+    pt = datetime(2022, 4, 1, tzinfo=UTC)
+
+    # 4 patients, all admitted on 2022-04-01.
+    #   subj 1, 2: prior diabetes diagnosis before admission — should be excluded.
+    #              For both, the model predicts perfectly (the easy case).
+    #   subj 3, 4: no prior diabetes — should remain in the cohort.
+    #              Subject 3 has a true post-admission event but the model predicts late.
+    #              Subject 4 never has a true event but the model predicts an early event.
+    #   So among the no-history cohort, the model is *anti-correlated* (AUC=0).
+    MEDS_df = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 2, 2, 3, 4],
+            "time": [
+                datetime(2021, 6, 1, tzinfo=UTC),  # subj 1: prior dx
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 1: future dx (4d post-pt)
+                datetime(2021, 8, 1, tzinfo=UTC),  # subj 2: prior dx
+                datetime(2022, 4, 6, tzinfo=UTC),  # subj 2: future dx (5d post-pt)
+                datetime(2022, 4, 4, tzinfo=UTC),  # subj 3: future dx only (3d post-pt)
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 4: lab only — no diabetes ever
+            ],
+            "code": [
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "LAB_GLUCOSE",  # ensures subj 4 is in MEDS but with no diabetes events
+            ],
+        }
+    )
+
+    # Single trajectory: a sampled-future timeline per subject.
+    #   subj 1, 2: predict the right event timing (high predicted probability).
+    #   subj 3 (true positive): predict no event in window (low prob -> wrong).
+    #   subj 4 (true negative): predict an in-window event (high prob -> wrong).
+    traj = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 2, 2, 3, 3, 4, 4],
+            "prediction_time": [pt] * 8,
+            "time": [
+                pt,
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 1: prediction matches truth
+                pt,
+                datetime(2022, 4, 6, tzinfo=UTC),  # subj 2: prediction matches truth
+                pt,
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 3: predicts late (out of 10d window)
+                pt,
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 4: predicts in-window (wrong)
+            ],
+            "code": [
+                "DUMMY",
+                "ICD10//E11.9",
+                "DUMMY",
+                "ICD10//E11.9",
+                "DUMMY",
+                "ICD10//E11.9",
+                "DUMMY",
+                "ICD10//E11.9",
+            ],
+        }
+    )
+    traj.write_parquet(tmp_path / "traj_1.parquet")
+
+    predicates = {"diabetes": PlainPredicateConfig(code="ICD10//E11.9")}
+
+    # Same call, two different `exclude_history` settings. With the bug, both produce
+    # the same AUC (the filter silently no-ops). After the fix, the two should differ
+    # because subjects 1 and 2 (the two history-positive easy cases) are removed.
+    auc_no_filter = temporal_auc_from_trajectory_files(
+        MEDS_df,
+        tmp_path,
+        predicates,
+        duration_grid=[timedelta(days=10)],
+        exclude_history=False,
+    )
+    auc_filtered = temporal_auc_from_trajectory_files(
+        MEDS_df,
+        tmp_path,
+        predicates,
+        duration_grid=[timedelta(days=10)],
+        exclude_history=True,
+    )
+
+    no_filter_val = auc_no_filter["AUC/diabetes"][0]
+    filtered_val = auc_filtered["AUC/diabetes"][0] if "AUC/diabetes" in auc_filtered.columns else None
+
+    # No-filter AUC includes all 4 subjects:
+    #   labels: subj 1 True, subj 2 True, subj 3 True (true tte=3d ≤ 10d), subj 4 False
+    #   probs:  subj 1 = 1.0, subj 2 = 1.0, subj 3 = 0.0, subj 4 = 1.0
+    #   positives [1.0, 1.0, 0.0], negative [1.0] → AUC ≈ 0.333
+    #
+    # If exclude_history actually fires, subjects 1 and 2 are removed, leaving only
+    # subj 3 (True, prob 0.0) and subj 4 (False, prob 1.0) → an anti-correlated pair
+    # with AUC = 0.0.
+    #
+    # The bug: filtered_val == no_filter_val because the filter silently no-ops.
+    assert filtered_val != no_filter_val, (
+        f"`exclude_history=True` is a silent no-op (#33): both calls returned AUC={no_filter_val}. "
+        "Expected the filtered call to drop subjects 1 and 2 and yield a different AUC "
+        "(specifically AUC=0.0 once subjects 1 and 2 are excluded)."
+    )
 
 
 def _duration_tds(min_days: int, max_days: int) -> st.SearchStrategy[timedelta]:
