@@ -46,7 +46,6 @@ def _normalize_predicates(predicates: PREDICATES_T | str | Path) -> PREDICATES_T
     Returns:
         The dictionary of plain predicate configurations.
     """
-
     if isinstance(predicates, str | Path):
         cfg = OmegaConf.load(str(predicates))
         predicates = cfg.get("predicates", cfg)
@@ -89,7 +88,6 @@ def temporal_auc_from_trajectory_files(
     Returns:
         A dataframe containing the temporal AUCs for each predicate.
     """
-
     preds = _normalize_predicates(predicates)
 
     if not isinstance(trajectories, str | Path):
