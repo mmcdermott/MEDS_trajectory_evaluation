@@ -1,7 +1,7 @@
 """Schema definition for generated MEDS trajectories.
 
-Extends the core MEDS data schema with a ``prediction_time`` column to associate generated events
-with the input data cutoff time used for generation.
+Extends the core MEDS data schema with a ``prediction_time`` column to associate generated events with the
+input data cutoff time used for generation.
 """
 
 import pyarrow as pa
