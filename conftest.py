@@ -27,7 +27,6 @@ from omegaconf import DictConfig, OmegaConf
 @pytest.fixture
 def sample_task_schema() -> pl.DataFrame:
     """A fixture that provides sample trajectories for testing."""
-
     return pl.DataFrame(
         {
             "subject_id": [1, 1, 2],
@@ -68,7 +67,6 @@ def sample_labeled_trajectories(
     The structure of the labels by relaxation is that for any set of relaxation options, the label is given by
     the largest dictionary key set that is a subset of the query set of relaxations.
     """
-
     return {
         (1, datetime(1993, 1, 1, tzinfo=UTC)): [
             LabeledTrajectory(
@@ -220,7 +218,6 @@ def sample_labeled_trajectories_on_disk(
 @pytest.fixture
 def sample_task_criteria_cfg() -> DictConfig:
     """A sample task definition."""
-
     return DictConfig(
         {
             "predicates": {
@@ -267,7 +264,6 @@ def sample_task_criteria_cfg() -> DictConfig:
 @pytest.fixture
 def sample_predicates_cfg() -> DictConfig:
     """A sample predicates definition."""
-
     return DictConfig(
         {
             "predicates": {
@@ -281,7 +277,6 @@ def sample_predicates_cfg() -> DictConfig:
 @pytest.fixture
 def sample_task_criteria_fp(sample_task_criteria_cfg: DictConfig, tmp_path: Path) -> Path:
     """A sample task criteria file path."""
-
     criteria_fp = tmp_path / "task_criteria.yaml"
     OmegaConf.save(sample_task_criteria_cfg, criteria_fp)
     return criteria_fp
@@ -290,7 +285,6 @@ def sample_task_criteria_fp(sample_task_criteria_cfg: DictConfig, tmp_path: Path
 @pytest.fixture
 def sample_predicates_fp(sample_predicates_cfg: DictConfig, tmp_path: Path) -> Path:
     """A sample predicates file path."""
-
     predicates_fp = tmp_path / "predicates.yaml"
     OmegaConf.save(sample_predicates_cfg, predicates_fp)
     return predicates_fp
@@ -308,7 +302,6 @@ def print_warnings(caplog: pytest.LogCaptureFixture):
 
     This is useful in doctests, where you want to show printed outputs for documentation and testing purposes.
     """
-
     n_current_records = len(caplog.records)
 
     with caplog.at_level("WARNING"):

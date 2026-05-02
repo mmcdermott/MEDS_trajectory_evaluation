@@ -5,7 +5,7 @@ exclude: "docs/index.md"
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
     hooks:
       # list of supported hooks: https://pre-commit.com/hooks.html
       - id: trailing-whitespace
@@ -22,7 +22,7 @@ repos:
 
   # python code formatting, linting, and import sorting using ruff
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.5
+    rev: 6fec9b7edb08fd9989088709d864a7826dc74e80 # frozen: v0.15.12
     hooks:
       # Run the formatter
       - id: ruff-format
@@ -31,15 +31,15 @@ repos:
         args: ["--fix", "--exit-non-zero-on-fix"]
 
   # python docstring formatting
-  - repo: https://github.com/myint/docformatter
-    rev: v1.7.5
+  - repo: https://github.com/PyCQA/docformatter
+    rev: 0032269a0e65c068af9cd86c9a8859a0ddd568d6 # frozen: v1.7.8
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=110, --wrap-descriptions=110]
 
   # yaml formatting
   - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+    rev: f12edd9c7be1c20cfa42420fd0e6df71e42b51ea # frozen: v4.0.0-alpha.8
     hooks:
       - id: prettier
         types: [yaml]
@@ -47,30 +47,32 @@ repos:
 
   # shell scripts linter
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: 745eface02aef23e168a8afb6b5737818efbea95 # frozen: v0.11.0.1
     hooks:
       - id: shellcheck
 
   # md formatting
+  # mdformat is pinned to 0.7.22 — `mdformat-tables==1.0.0` requires `mdformat<0.8.0`,
+  # so the plugin set determines the upper bound here, not the latest mdformat release.
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.22
+    rev: 83dc2ce5ca115d3390b9b5561d2898366faf0742 # frozen: 0.7.22
     hooks:
       - id: mdformat
         args: ["--number"]
         additional_dependencies:
-          - mdformat-ruff
-          - mdformat-gfm
-          - mdformat-gfm-alerts
-          - mdformat-tables
-          - mdformat_frontmatter
-          - mdformat-black
-          - mdformat-config
-          - mdformat-mkdocs
-          - mdformat-toc
+          - mdformat-ruff==0.1.3
+          - mdformat-gfm==1.0.0
+          - mdformat-gfm-alerts==2.0.0
+          - mdformat-tables==1.0.0
+          - mdformat-frontmatter==2.0.10
+          - mdformat-black==0.1.1
+          - mdformat-config==0.2.1
+          - mdformat-mkdocs==5.1.4
+          - mdformat-toc==0.5.0
 
   # word spelling linter
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: 2ccb47ff45ad361a21071a7eedda4c37e6ae8c5a # frozen: v2.4.2
     hooks:
       - id: codespell
         args:
@@ -79,13 +81,13 @@ repos:
 
   # jupyter notebook cell output clearing
   - repo: https://github.com/kynan/nbstripout
-    rev: 0.8.1
+    rev: f5da19ce3b7b40e97c12ee9cd8ce97f48f97ddf7 # frozen: 0.9.1
     hooks:
       - id: nbstripout
 
   # jupyter notebook linting with ruff
   - repo: https://github.com/nbQA-dev/nbQA
-    rev: 1.9.1
+    rev: f96ec7f3b26a32619435686eb5813235f7e3327e # frozen: 1.9.1
     hooks:
       - id: nbqa-ruff
         args: ["--fix"]
