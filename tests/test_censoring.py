@@ -12,6 +12,57 @@ from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import (
 )
 
 
+def test_pre_window_event_labeled_consistently_in_censoring_and_legacy_modes():
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/34.
+
+    `add_labels_from_true_tte` produces different labels for the *same* input depending
+    on whether `handle_censoring` is on, for the case of an event observed *before* the
+    evaluation window opens (`tte <= start`, where `start = offset`):
+
+      - **Legacy** (`handle_censoring=False`): `(tte > start) & (tte <= window_end)`
+        evaluates to `False` -> label is `False`.
+      - **Censoring** (`handle_censoring=True`): no branch covers a non-null
+        `tte <= start`; the chain falls through to `.otherwise(None)` -> label is `None`
+        (i.e. the row is treated as censored and dropped from downstream AUCs).
+
+    Real-world scenario: an "early-warning" model evaluated with a non-zero offset.
+    Imagine `offset=24h` (we ignore events in the first 24h after admission) and a
+    patient who deteriorated within the first hour. In legacy mode the patient is a
+    confirmed-not-in-window negative for the 24h+ horizon; in censoring mode they are
+    silently dropped. Switching `handle_censoring` should not change the cohort size.
+    """
+
+    # One subject with a true event observed BEFORE the evaluation window opens, and
+    # follow-up that comfortably exceeds the window end.
+    df = pl.DataFrame(
+        {
+            "subject_id": [1],
+            "prediction_time": [datetime(2021, 1, 1, tzinfo=UTC)],
+            "tte/A": [timedelta(hours=1)],  # event in the first hour
+            "duration": [timedelta(days=10)],  # 10d evaluation window
+            "max_followup_time": [timedelta(days=30)],  # adequate follow-up
+        }
+    )
+    offset = timedelta(days=1)  # window starts 1d after prediction time
+
+    legacy = add_labels_from_true_tte(df, offset=offset, handle_censoring=False)
+    censored = add_labels_from_true_tte(df, offset=offset, handle_censoring=True)
+
+    legacy_label = legacy["label/A"][0]
+    censoring_label = censored["label/A"][0]
+
+    # The event is fully observed (tte=1h, max_followup=30d). Adequate follow-up exists
+    # to determine that it didn't occur within the (1d, 11d] window — that's what
+    # legacy mode reports. Censoring mode currently treats this row as censored.
+    assert legacy_label is False, "sanity: legacy mode labels a pre-window event as False"
+    assert censoring_label == legacy_label, (
+        f"#34: pre-window event labeled `{censoring_label}` under censoring vs "
+        f"`{legacy_label}` under legacy mode. The two modes should agree on rows with "
+        "adequate follow-up; censoring should only ever turn rows from False -> None, "
+        "not from False -> None silently when the event is observed."
+    )
+
+
 def test_get_raw_tte_followup_time():
     """Test that get_raw_tte correctly calculates follow-up times."""
     # Create MEDS data with varying follow-up times
