@@ -65,7 +65,6 @@ def test_pre_window_event_labeled_consistently_in_censoring_and_legacy_modes():
 
 def test_get_raw_tte_followup_time():
     """Test that get_raw_tte correctly calculates follow-up times."""
-
     # Create MEDS data with varying follow-up times
     MEDS_df = pl.DataFrame(
         {
@@ -122,7 +121,6 @@ def test_get_raw_tte_followup_time():
 
 def test_add_labels_censoring_aware():
     """Test censoring-aware labeling logic with comprehensive examples."""
-
     # Create test data with various censoring scenarios
     df = pl.DataFrame(
         {
@@ -175,7 +173,6 @@ def test_add_labels_censoring_aware():
 
 def test_temporal_aucs_censoring_exclusion():
     """Test that temporal_aucs properly excludes censored cases from AUC calculation."""
-
     # Create test data where censoring affects the outcome
     true_tte = pl.DataFrame(
         {
@@ -243,7 +240,6 @@ def test_temporal_aucs_censoring_exclusion():
 
 def test_censoring_edge_cases():
     """Test edge cases in censoring logic."""
-
     # Test with zero follow-up time
     df_zero_followup = pl.DataFrame(
         {
@@ -303,7 +299,6 @@ def test_censoring_edge_cases():
 
 def test_censoring_with_offset():
     """Test censoring logic with time offsets."""
-
     df = pl.DataFrame(
         {
             "subject_id": [1, 2],
@@ -325,7 +320,6 @@ def test_censoring_with_offset():
 
 def test_multiple_tasks_censoring():
     """Test censoring logic with multiple predicates/tasks."""
-
     df = pl.DataFrame(
         {
             "subject_id": [1, 2],
