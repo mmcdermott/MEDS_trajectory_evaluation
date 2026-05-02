@@ -237,7 +237,6 @@ def _parse_resolution(resolution: str) -> timedelta:
         Uses :func:`pytimeparse.timeparse.parse` under the hood to support a
         range of short duration strings.
     """
-
     from pytimeparse import parse
 
     seconds = parse(resolution)
@@ -410,7 +409,6 @@ def get_grid(
     Raises:
         ValueError: If ``grid`` is a list containing non-timedelta elements.
     """
-
     match grid:
         case str() as resolution:
             return resolution_grid(ttes_df, resolution)

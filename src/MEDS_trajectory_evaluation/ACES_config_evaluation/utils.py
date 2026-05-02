@@ -52,6 +52,5 @@ def hash_based_seed(seed: int | None, worker: int | None) -> int:
         >>> hash_based_seed(None, None)
         3685662983
     """
-
     hash_str = f"{seed}_{worker}"
     return int(sha256(hash_str.encode()).hexdigest(), 16) % (2**32 - 1)

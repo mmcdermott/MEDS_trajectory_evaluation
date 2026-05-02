@@ -28,7 +28,6 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
     Examples:
         >>> validate_task_cfg(sample_ACES_cfg)
     """
-
     for k in ("label_window", "index_timestamp_window"):
         val = getattr(task_cfg, k)
         if val is None:
@@ -66,7 +65,6 @@ def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
     Returns:
         A zero-shot task configuration with only the relevant windows for zero-shot labeling.
     """
-
     prediction_time_window_name = task_cfg.index_timestamp_window
     prediction_time_window_cfg = task_cfg.windows[prediction_time_window_name]
     prediction_time_window = WindowNode(
@@ -122,7 +120,6 @@ def collapse_temporal_gap_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskC
     Returns:
         The collapsed task configuration with the temporal gap windows maximally collapsed.
     """
-
     label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
     root_to_label = list(task_cfg.window_nodes[label_window_node.node_name].node_path)
 
@@ -164,7 +161,6 @@ def remove_post_label_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskConfi
     Returns:
         The modified task configuration with the post-label windows removed.
     """
-
     label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
     label_window_node = task_cfg.window_nodes[label_window_node.node_name]
 
@@ -195,7 +191,6 @@ def convert_to_zero_shot(
     Returns:
         A zero-shot task configuration with the relevant windows and relationships for zero-shot labeling.
     """
-
     zero_shot_cfg = _strip_to_rel_windows(task_cfg)
 
     if labeler_cfg is None:
@@ -234,7 +229,6 @@ def resolve_zero_shot_task_cfg(task_cfg: DictConfig, labeler_cfg: DictConfig) ->
         FileNotFoundError: If the specified file paths do not exist.
         ValueError: If the task configuration is invalid or cannot be resolved.
     """
-
     orig_cfg = TaskExtractorConfig.load(task_cfg.criteria_fp, task_cfg.predicates_fp)
 
     validate_task_cfg(orig_cfg)

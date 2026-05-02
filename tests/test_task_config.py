@@ -12,7 +12,6 @@ from MEDS_trajectory_evaluation.ACES_config_evaluation.task_config import valida
 
 def test_validate_task_cfg_error_includes_tree_when_prediction_not_ancestor():
     """Ensures the validation error message contains the window tree when misconfigured."""
-
     task_cfg = TaskExtractorConfig(
         predicates={
             "trigger_pred": PlainPredicateConfig("TRIGGER"),
