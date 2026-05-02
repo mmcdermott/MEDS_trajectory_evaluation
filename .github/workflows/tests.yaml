@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Setup package ${{ matrix.python-version }}
         uses: ./.github/actions/setup
@@ -31,6 +31,7 @@ jobs:
           --ignore="benchmark" --ignore="src/meds_torchdata/extensions"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4.0.1
+        uses: codecov/codecov-action@v5.5.4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

@@ -22,13 +22,21 @@ dependencies = [
   "hydra-core~=1.3.2",
   "MEDS-transforms>=0.6.7,<0.7",
   "flexible_schema>=0.1.1",
-  "pytimeparse",
+  "pytimeparse>=1.1.8",
 ]
 
 [dependency-groups]
+# Dev dependencies are pinned to specific versions to keep CI deterministic and remove
+# upgrade-induced flakiness. Use `uv lock --upgrade-package <name>` to bump.
 dev = [
-  "pre-commit<4", "ruff", "pytest", "pytest-cov", "pretty-print-directory", "hypothesis", "scikit-learn"
-] # Add your development (lint, test) dependencies here
+  "pre-commit==3.8.0",
+  "ruff==0.13.3",
+  "pytest==8.4.2",
+  "pytest-cov==7.0.0",
+  "pretty-print-directory==0.1.3",
+  "hypothesis==6.140.3",
+  "scikit-learn==1.7.2",
+]
 
 [tool.setuptools_scm]
 
