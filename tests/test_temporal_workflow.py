@@ -33,7 +33,6 @@ def test_merge_pred_ttes_aligns_by_subject_not_position():
     parquet is independently sampled, and per-file row order is whatever the upstream
     sampler chose. There is no guarantee orderings match.
     """
-
     base = datetime(2022, 1, 1, tzinfo=UTC)
     pt1 = base
     pt2 = base + timedelta(days=10)
@@ -79,7 +78,6 @@ def test_temporal_auc_from_trajectory_files_handles_unordered_parquets(tmp_path)
     misalignment causes downstream AUCs to silently differ from a pipeline that simply happened to keep the
     orderings aligned.
     """
-
     base = datetime(2022, 1, 1, tzinfo=UTC)
     subjects = [1, 2, 3, 4]
     pred_times = {s: base + timedelta(days=s) for s in subjects}
