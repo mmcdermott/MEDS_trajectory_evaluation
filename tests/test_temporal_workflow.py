@@ -34,7 +34,6 @@ def test_temporal_auc_from_trajectory_files_exclude_history_actually_filters(tmp
     prior diabetes is the entire point of the feature — those patients are not in the
     population the model is meant to address.
     """
-
     base = datetime(2022, 1, 1, tzinfo=UTC)  # noqa: F841 — kept for reading clarity
     pt = datetime(2022, 4, 1, tzinfo=UTC)
 
