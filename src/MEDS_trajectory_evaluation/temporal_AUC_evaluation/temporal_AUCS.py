@@ -1097,18 +1097,6 @@ def temporal_aucs(
         .sort("duration", descending=False)
     )
 
-    # `df_AUC` requires balanced `true/<task>` and `false/<task>` columns. Any task whose pivot output
-    # is missing one side has no positives or no negatives at any duration in this evaluation, so its
-    # AUC is undefined; drop those tasks here with a warning rather than letting df_AUC raise.
-    has_true = {c.removeprefix("true/") for c in pivoted.columns if c.startswith("true/")}
-    has_false = {c.removeprefix("false/") for c in pivoted.columns if c.startswith("false/")}
-    drop_cols: list[str] = []
-    for t in sorted((has_true ^ has_false) & {*has_true, *has_false}):
-        side = "negatives" if t in has_true else "positives"
-        logger.warning("Dropping task %r from AUC output: no %s at any duration in this evaluation.", t, side)
-        drop_cols.extend(c for c in (f"true/{t}", f"false/{t}") if c in pivoted.columns)
-    pivoted = pivoted.drop(*drop_cols)
-
     aucs = df_AUC(pivoted)
 
     out_cols = [f"AUC/{task}" for task in tasks if f"AUC/{task}" in aucs.columns]
