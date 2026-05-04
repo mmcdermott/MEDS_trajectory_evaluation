@@ -53,7 +53,6 @@ def _raw_inputs(draw):
 
     # compute manual ttes and histories replicating get_raw_tte semantics
     manual = {}
-    has_none = False
     for row in index_rows:
         s = row["subject_id"]
         pt = row["prediction_time"]
@@ -63,19 +62,13 @@ def _raw_inputs(draw):
                 # If no events of this task for this subject, history is False and tte is null.
                 history = False
                 tte = None
-                has_none = True
             else:
                 # history is True iff any event occurred at or before the prediction time.
                 history = min(events) <= pt
                 # tte is the time until the first event strictly after the prediction time.
-                future = [e for e in events if e > pt]
-                if future:
-                    tte = future[0] - pt
-                else:
-                    tte = None
-                    has_none = True
+                first_future = next((e for e in events if e > pt), None)
+                tte = None if first_future is None else first_future - pt
             manual[(s, pt, task)] = (tte, history)
-    assume(has_none)
 
     return MEDS_df, index_df, tasks, manual
 
