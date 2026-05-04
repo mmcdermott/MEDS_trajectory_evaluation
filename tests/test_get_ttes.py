@@ -24,7 +24,6 @@ def test_history_false_for_subject_with_no_matching_predicate_events():
     events as if they had history. This silently corrupts any downstream `exclude_history`
     cohort filter (see #33).
     """
-
     # Three patients admitted on the same day. Two have prior diabetes events; one doesn't.
     # Note: subject 30 has only an unrelated `LAB_GLUCOSE` event in MEDS — no diabetes events
     # at all. They are exactly the case `get_all_predicate_times` drops before the right-join.
