@@ -52,6 +52,10 @@ def _workflow_inputs(draw):
                 )
     # ensure at least one subject has no upcoming events for all tasks
     assume(any(all(true_ttes[(s, t)] is None for t in tasks) for s in subjects))
+    # `temporal_aucs` raises when a task has no positives at any duration in the grid, or no
+    # negatives at any duration. This test exercises the AUC math, not the raise path; filter
+    # such degenerate draws via assume. We need to know the duration grid here, but the grid is
+    # drawn later — so do the assume after the grid is drawn (see further below).
     if meds_rows:
         MEDS_df = pl.DataFrame(meds_rows)
     else:
@@ -92,6 +96,15 @@ def _workflow_inputs(draw):
         pred_dfs.append(pl.DataFrame(rows))
 
     duration_grid = sorted(set(draw(st.lists(_duration_tds(1, 30), min_size=1, max_size=5))))
+
+    # See note above: skip draws where any task is class-degenerate across the grid, since
+    # `temporal_aucs` would raise (correctly) and that's not what this test exercises.
+    max_d = duration_grid[-1]
+    for task in tasks:
+        ttes = [true_ttes[(s, task)] for s in subjects]
+        has_positive = any(t is not None and t <= max_d for t in ttes)
+        has_negative = any(t is None or t > duration_grid[0] for t in ttes)
+        assume(has_positive and has_negative)
 
     return MEDS_df, pred_dfs, duration_grid, tasks, true_ttes
 
