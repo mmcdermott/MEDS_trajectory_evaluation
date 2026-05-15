@@ -1052,6 +1052,20 @@ def temporal_aucs(
     else:
         exclude_set = set()
 
+    # Validate up front so the caller can't silently get unfiltered AUCs when they asked for
+    # `exclude_history`. The caller is responsible for producing the `history/<task>` columns
+    # (via `get_raw_tte(..., include_history=True)`); if any task in `exclude_set` is missing
+    # its history column we'd otherwise silently no-op the filter.
+    missing_history = [t for t in exclude_set if f"history/{t}" not in with_probs.columns]
+    if missing_history:
+        names = ", ".join(repr(t) for t in sorted(missing_history))
+        raise ValueError(
+            f"`exclude_history` requested for task(s) {{{names}}} but their `history/<task>` columns "
+            "are not present in `true_tte`. Pass `include_history=True` to `get_raw_tte` (or use "
+            "`temporal_auc_from_trajectory_files` which wires it through automatically) so the "
+            "history columns are computed before they are needed for filtering."
+        )
+
     dfs_by_task = []
     for task in tasks:
         df_task = with_probs
@@ -1060,7 +1074,7 @@ def temporal_aucs(
         if handle_censoring:
             df_task = df_task.filter(pl.col(f"label/{task}").is_not_null())
 
-        if task in exclude_set and f"history/{task}" in df_task.columns:
+        if task in exclude_set:
             df_task = df_task.filter(~pl.col(f"history/{task}"))
 
         dfs_by_task.append(

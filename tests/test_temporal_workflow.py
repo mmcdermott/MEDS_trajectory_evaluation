@@ -2,6 +2,7 @@ import math
 from datetime import UTC, datetime, timedelta
 
 import polars as pl
+import pytest
 from aces.config import PlainPredicateConfig
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
@@ -15,7 +16,119 @@ from MEDS_trajectory_evaluation.temporal_AUC_evaluation.get_ttes import (
 from MEDS_trajectory_evaluation.temporal_AUC_evaluation.temporal_AUCS import (
     temporal_aucs,
 )
+from MEDS_trajectory_evaluation.temporal_AUC_evaluation.trajectory_AUC import (
+    temporal_auc_from_trajectory_files,
+)
 from tests.helpers import _manual_auc
+
+
+def test_temporal_auc_from_trajectory_files_exclude_history_actually_filters(tmp_path):
+    """Regression test for https://github.com/mmcdermott/MEDS_trajectory_evaluation/issues/33.
+
+    Real-world scenario: predicting *first* diabetes diagnosis. Two of four admitted
+    patients had a prior dx — they should be excluded by `exclude_history=True`. Pre-fix,
+    `temporal_auc_from_trajectory_files` forwarded `exclude_history` to `temporal_aucs` but
+    never asked `get_raw_tte` to compute the `history/<task>` columns the filter depends on,
+    so the filter silently no-opped.
+    """
+    pt = datetime(2022, 4, 1, tzinfo=UTC)
+
+    # 4 patients, all admitted on 2022-04-01.
+    #   subj 1, 2: prior diabetes diagnosis — should be excluded.
+    #              For both, the model predicts perfectly.
+    #   subj 3, 4: no prior diabetes — should remain.
+    #              Subject 3: true post-admission event but predicted late (anti-correlated).
+    #              Subject 4: no true event but predicted an early event (anti-correlated).
+    MEDS_df = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 2, 2, 3, 4],
+            "time": [
+                datetime(2021, 6, 1, tzinfo=UTC),  # subj 1: prior dx
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 1: future dx (4d post-pt)
+                datetime(2021, 8, 1, tzinfo=UTC),  # subj 2: prior dx
+                datetime(2022, 4, 6, tzinfo=UTC),  # subj 2: future dx (5d post-pt)
+                datetime(2022, 4, 4, tzinfo=UTC),  # subj 3: future dx only (3d post-pt)
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 4: lab only — no diabetes ever
+            ],
+            "code": [
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "ICD10//E11.9",
+                "LAB_GLUCOSE",
+            ],
+        }
+    )
+
+    traj = pl.DataFrame(
+        {
+            "subject_id": [1, 1, 2, 2, 3, 3, 4, 4],
+            "prediction_time": [pt] * 8,
+            "time": [
+                pt,
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 1: prediction matches truth
+                pt,
+                datetime(2022, 4, 6, tzinfo=UTC),  # subj 2: prediction matches truth
+                pt,
+                datetime(2022, 5, 1, tzinfo=UTC),  # subj 3: predicts late (out of 10d window)
+                pt,
+                datetime(2022, 4, 5, tzinfo=UTC),  # subj 4: predicts in-window (wrong)
+            ],
+            "code": ["DUMMY", "ICD10//E11.9"] * 4,
+        }
+    )
+    traj.write_parquet(tmp_path / "traj_1.parquet")
+
+    predicates = {"diabetes": PlainPredicateConfig(code="ICD10//E11.9")}
+    grid = [timedelta(days=10)]
+
+    no_filter = temporal_auc_from_trajectory_files(
+        MEDS_df, tmp_path, predicates, duration_grid=grid, exclude_history=False
+    )
+    filtered = temporal_auc_from_trajectory_files(
+        MEDS_df, tmp_path, predicates, duration_grid=grid, exclude_history=True
+    )
+
+    # No-filter (all 4 subjects):
+    #   labels: subj 1 True, subj 2 True, subj 3 True (tte=3d <= 10d), subj 4 False
+    #   probs:  subj 1 = 1.0, subj 2 = 1.0, subj 3 = 0.0, subj 4 = 1.0
+    #   positives [1.0, 1.0, 0.0], negative [1.0] -> AUC = (1*0.5 + 1*0.5 + 0*0) / (3*1) = 1/3
+    assert math.isclose(no_filter["AUC/diabetes"][0], 1.0 / 3.0)
+
+    # exclude_history=True drops subj 1 and subj 2 (both had prior dx).
+    # Remaining: subj 3 (True, prob 0.0) and subj 4 (False, prob 1.0) -> anti-correlated -> AUC = 0.0
+    assert filtered["AUC/diabetes"][0] == 0.0
+
+
+def test_temporal_aucs_raises_when_exclude_history_lacks_history_columns():
+    """Regression test for #33: silent no-op surfaced as a clear error.
+
+    The buggy behavior was: `exclude_history=True` silently did nothing whenever the caller
+    forgot to also pass `include_history=True` to `get_raw_tte`. After the fix, that mistake
+    is loud — `temporal_aucs` raises with a message naming the missing tasks and pointing
+    the caller at the right knob.
+    """
+    pt = datetime(2022, 1, 1, tzinfo=UTC)
+    true_tte = pl.DataFrame(
+        {
+            "subject_id": [1, 2],
+            "prediction_time": [pt, pt],
+            "tte/A": [timedelta(days=2), None],
+            "max_followup_time": [timedelta(days=30), timedelta(days=30)],
+            # NB: no `history/A` column.
+        }
+    )
+    pred_ttes = pl.DataFrame(
+        {
+            "subject_id": [1, 2],
+            "prediction_time": [pt, pt],
+            "tte/A": [[timedelta(days=1)], [timedelta(days=20)]],
+        }
+    )
+
+    with pytest.raises(ValueError, match=r"history/<task>"):
+        temporal_aucs(true_tte, pred_ttes, [timedelta(days=10)], exclude_history=True)
 
 
 def _duration_tds(min_days: int, max_days: int) -> st.SearchStrategy[timedelta]:
