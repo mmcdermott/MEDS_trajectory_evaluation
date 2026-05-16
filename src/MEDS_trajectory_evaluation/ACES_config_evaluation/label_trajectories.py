@@ -1,10 +1,22 @@
+from collections.abc import Callable
+
 import polars as pl
 from aces.config import TaskExtractorConfig
 from aces.extract_subtree import extract_subtree
 from meds import LabelSchema
+from MEDS_transforms.stages.base import Stage
+from omegaconf import DictConfig
 
 from ..aces_utils import get_MEDS_predicates
-from .task_config import ZeroShotTaskConfig
+from .task_config import ZeroShotTaskConfig, resolve_zero_shot_task_cfg
+
+LABELS_SCHEMA_UPDATES = {
+    LabelSchema.subject_id_name: pl.Int64,
+    LabelSchema.prediction_time_name: pl.Datetime("us"),
+    "valid": pl.Boolean,
+    "determinable": pl.Boolean,
+    "label": pl.Boolean,
+}
 
 SUBJ_AND_PRED_TIME = pl.struct(LabelSchema.subject_id_name, LabelSchema.prediction_time_name).alias(
     LabelSchema.subject_id_name
@@ -241,3 +253,21 @@ def label_trajectories(
             pl.col("label"),
         )
     )
+
+
+def label_trajectories_fntr(stage_cfg: DictConfig) -> Callable[[pl.DataFrame], pl.DataFrame]:
+    """Factory binding the resolved zero-shot task config to per-shard label_trajectories calls.
+
+    `map_stage` consumes a `pl.DataFrame -> pl.DataFrame` map_fn per shard; the task and labeler configs come
+    from the stage's Hydra config, not from the per-shard data, so we resolve them once here and return a
+    closed-over compute function.
+    """
+    zero_shot_task_cfg = resolve_zero_shot_task_cfg(stage_cfg.task, stage_cfg.labeler)
+    return lambda df: label_trajectories(df, zero_shot_task_cfg)
+
+
+stage = Stage.register(
+    map_fn=label_trajectories_fntr,
+    stage_name="label_trajectories",
+    output_schema_updates=LABELS_SCHEMA_UPDATES,
+)

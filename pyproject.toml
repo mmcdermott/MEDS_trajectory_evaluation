@@ -41,7 +41,15 @@ dev = [
 [tool.setuptools_scm]
 
 [project.scripts]
-ZSACES_label = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:label"
+ZSACES_predict = "MEDS_trajectory_evaluation.ACES_config_evaluation.__main__:predict"
+
+# Stage objects discoverable by the MEDS-transforms pipeline runner. The console script
+# above is a thin Hydra wrapper that runs the two stages sequentially; declaring them as
+# entry points additionally lets external pipelines compose them (and lets the runner's
+# stage discovery test infrastructure pick them up).
+[project.entry-points."MEDS_transforms.stages"]
+label_trajectories = "MEDS_trajectory_evaluation.ACES_config_evaluation.label_trajectories:stage"
+aggregate_predictions = "MEDS_trajectory_evaluation.ACES_config_evaluation.aggregate_predictions:stage"
 
 [project.urls]
 Homepage = "https://github.com/mmcdermott/MEDS_trajectory_evaluation"

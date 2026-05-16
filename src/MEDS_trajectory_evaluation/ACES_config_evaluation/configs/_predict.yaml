@@ -3,6 +3,7 @@ defaults:
 
 # Input
 trajectories_dir: ???
+task_labels_fp: ???
 
 # Output
 output_dir: ???
@@ -12,11 +13,16 @@ task:
   criteria_fp: ???
   predicates_fp: null
 
-# Labels
+# Labeler relaxations (applied to the zero-shot task config before labeling)
 labeler:
   remove_all_criteria: False
   collapse_temporal_gap_windows: False
   remove_post_label_windows: False
+
+# Aggregation policy for the second stage
+policy:
+  invalid: drop
+  indeterminable: drop
 
 # Pipeline
 worker: 0
