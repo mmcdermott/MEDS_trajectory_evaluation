@@ -139,16 +139,34 @@ shape: (2, 3)
 └──────────────┴────────┴────────┘
 ```
 
-### 2.C Full ACES Task Labeling
+### 2.C Full ACES Task Labeling → Predictions
 
 ```bash
-ZSACES_label task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
-    output_dir=$OUTPUT_DIR trajectories_dir=$TRAJECTORIES_DIR
+ZSACES_predict task.criteria_fp="$TASK_CRITERIA" task.predicates_fp="$PREDICATES_FP" \
+    trajectories_dir=$TRAJECTORIES_DIR task_labels_fp=$GROUND_TRUTH_LABELS_FP \
+    output_dir=$OUTPUT_DIR
 ```
 
-Optionally, you can add relaxations to the zero-shot labeling config via `labeler.remove_all_criteria=True`,
-`labeler.collapse_temporal_gap_windows=True`, or `labeler.remove_post_label_windows=true`. See below for
-examples of these in action.
+`ZSACES_predict` runs two stages:
+
+1. **`label_trajectories`** — per-trajectory ACES labeling. Writes one parquet per input
+    trajectory at `$OUTPUT_DIR/label_trajectories/<shard>/<traj>.parquet` with
+    `(subject_id, prediction_time, valid, determinable, label)`. This is the on-disk
+    intermediate cache; a re-run after a crash skips already-labeled trajectories.
+2. **`aggregate_predictions`** — per *input shard*, reads every trajectory's labels,
+    applies a configurable `valid` / `determinable` policy, computes an empirical
+    probability per `(subject_id, prediction_time)`, joins with the ground-truth labels
+    at `$GROUND_TRUTH_LABELS_FP`, and writes one
+    [meds-evaluation](https://github.com/Medical-Event-Data-Standard/meds_evaluation)-compatible
+    parquet to `$OUTPUT_DIR/aggregate_predictions/<shard>.parquet`.
+
+Optional flags:
+
+- Labeling relaxations: `labeler.remove_all_criteria=True`,
+    `labeler.collapse_temporal_gap_windows=True`, or `labeler.remove_post_label_windows=true`.
+- Aggregation policy for trajectories that are invalid or indeterminable:
+    `policy.invalid=drop|negative|positive` and `policy.indeterminable=drop|negative|positive`
+    (both default to `drop`).
 
 # Full Documentation
 
@@ -719,7 +737,7 @@ What labels do we get if we run the labeling function on these with various rela
 first we need to import the label function:
 
 ```python
->>> from MEDS_trajectory_evaluation.ACES_config_evaluation.label import label_trajectories
+>>> from MEDS_trajectory_evaluation.ACES_config_evaluation.label_trajectories import label_trajectories
 
 ```
 
