@@ -194,6 +194,43 @@ def label_trajectories(
         - ``determinable`` (bool | null): Whether the trajectory contains enough information to
           determine a label. ``null`` if the trajectory is not valid.
         - ``label`` (bool | null): The extracted label. ``null`` if not determinable.
+
+    Examples:
+        A label window defined backward from a later endpoint (``start: end - 1d``) carries its label on
+        its ``start`` node; here the label window is the last day of a two-day span after the prediction
+        time, and subject 1's death on day 2 falls inside it while subject 2's death on day 1 does not:
+
+        >>> from datetime import datetime, timedelta
+        >>> from aces.config import EventConfig, PlainPredicateConfig, TaskExtractorConfig, WindowConfig
+        >>> from .task_config import convert_to_zero_shot
+        >>> cfg = TaskExtractorConfig(
+        ...     predicates={"adm": PlainPredicateConfig("ADMISSION"), "death": PlainPredicateConfig("DEATH")},
+        ...     trigger=EventConfig("adm"),
+        ...     windows={
+        ...         "input": WindowConfig("trigger", "start + 1h", True, True, index_timestamp="end"),
+        ...         "span": WindowConfig("input.end", "start + 2d", False, True),
+        ...         "target": WindowConfig("end - 1d", "span.end", False, True, label="death"),
+        ...     },
+        ... )
+        >>> pt = datetime(2020, 1, 1)
+        >>> trajectories = pl.DataFrame({
+        ...     "subject_id": [1, 1, 2, 2],
+        ...     "prediction_time": [pt] * 4,
+        ...     "time": [pt + timedelta(hours=1), pt + timedelta(days=1, hours=12),
+        ...              pt + timedelta(hours=1), pt + timedelta(hours=12)],
+        ...     "code": ["LAB", "DEATH", "LAB", "DEATH"],
+        ...     "numeric_value": [None] * 4,
+        ... }, schema_overrides={"numeric_value": pl.Float64})
+        >>> label_trajectories(trajectories, convert_to_zero_shot(cfg)).select("subject_id", "label")
+        shape: (2, 2)
+        ┌────────────┬───────┐
+        │ subject_id ┆ label │
+        │ ---        ┆ ---   │
+        │ i64        ┆ bool  │
+        ╞════════════╪═══════╡
+        │ 1          ┆ true  │
+        │ 2          ┆ false │
+        └────────────┴───────┘
     """
     subtree_anchor_realizations, predicates_df = get_predicates_and_anchor_realizations(
         trajectories, zero_shot_task_cfg
@@ -202,7 +239,10 @@ def label_trajectories(
     label_window = zero_shot_task_cfg.label_window
     label_predicate = zero_shot_task_cfg.windows[label_window].label
 
-    label_col = pl.col(f"{label_window}.end_summary").struct.field(label_predicate)
+    # A window's criteria and label live on the node at the far end of its span: its ``end`` for a window
+    # defined forward from its start, its ``start`` for one defined backward from its end (``end - 1d``).
+    own_side = "start" if zero_shot_task_cfg.windows[label_window].root_node == "end" else "end"
+    label_col = pl.col(f"{label_window}.{own_side}_summary").struct.field(label_predicate)
 
     aces_results = (
         extract_subtree(zero_shot_task_cfg.window_tree, subtree_anchor_realizations, predicates_df)

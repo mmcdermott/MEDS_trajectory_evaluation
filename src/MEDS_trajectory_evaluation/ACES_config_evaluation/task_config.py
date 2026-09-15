@@ -12,6 +12,17 @@ from omegaconf import DictConfig
 from ..aces_utils import WindowNode, ZeroShotTaskConfig, _resolve_node
 
 
+def _label_window_own_node(task_cfg: TaskExtractorConfig) -> WindowNode:
+    """The node carrying the label window's label: its ``end``, or its ``start`` for an end-rooted window.
+
+    Examples:
+        >>> _label_window_own_node(sample_ACES_cfg)
+        WindowNode(name='target', root='end')
+    """
+    window = task_cfg.windows[task_cfg.label_window]
+    return WindowNode(task_cfg.label_window, "start" if window.root_node == "end" else "end")
+
+
 def validate_task_cfg(task_cfg: TaskExtractorConfig):
     """Validates that the given task configuration is usable in the zero-shot labeling context.
 
@@ -72,8 +83,7 @@ def _strip_to_rel_windows(task_cfg: TaskExtractorConfig) -> ZeroShotTaskConfig:
     )
     new_root = _resolve_node(task_cfg, root_node=prediction_time_window)
 
-    label_window = task_cfg.label_window
-    label_window_node = _resolve_node(task_cfg, root_node=WindowNode(label_window, "end"))
+    label_window_node = _resolve_node(task_cfg, root_node=_label_window_own_node(task_cfg))
 
     new_task_cfg = ZeroShotTaskConfig(
         predicates=copy.deepcopy(task_cfg.predicates),
@@ -120,7 +130,7 @@ def collapse_temporal_gap_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskC
     Returns:
         The collapsed task configuration with the temporal gap windows maximally collapsed.
     """
-    label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
+    label_window_node = _resolve_node(task_cfg, root_node=_label_window_own_node(task_cfg))
     root_to_label = list(task_cfg.window_nodes[label_window_node.node_name].node_path)
 
     label_to_root = root_to_label[::-1]
@@ -161,7 +171,7 @@ def remove_post_label_windows(task_cfg: ZeroShotTaskConfig) -> ZeroShotTaskConfi
     Returns:
         The modified task configuration with the post-label windows removed.
     """
-    label_window_node = _resolve_node(task_cfg, root_node=WindowNode(task_cfg.label_window, "end"))
+    label_window_node = _resolve_node(task_cfg, root_node=_label_window_own_node(task_cfg))
     label_window_node = task_cfg.window_nodes[label_window_node.node_name]
 
     descendant_names = [n.node_name for n in label_window_node.descendants]
