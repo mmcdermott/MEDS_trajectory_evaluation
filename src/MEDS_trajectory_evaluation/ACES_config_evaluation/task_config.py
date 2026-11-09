@@ -17,7 +17,8 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
 
     Validation checks include:
       - Checking that the task configuration has a prediction time and label defined.
-      - Checking that the task configuration is a future-prediction task.
+      - Checking that the task configuration is a future-prediction task: its label window must be rooted at
+        the prediction-time node or one of its descendants.
 
     Args:
         task_cfg: The task configuration to validate, in ACES format.
@@ -41,14 +42,18 @@ def validate_task_cfg(task_cfg: TaskExtractorConfig):
     label_window_node = task_cfg.window_nodes[label_window_root.node_name]
     prediction_time_window_node = task_cfg.window_nodes[prediction_time_window_root.node_name]
 
-    if prediction_time_window_node not in label_window_node.ancestors:
+    # A label window rooted at the prediction-time node itself (e.g. `target: start: input.end`) is
+    # future-only too: ACES gives its start no node of its own, and a node is not its own ancestor.
+    rooted_at_prediction_time = label_window_node is prediction_time_window_node
+    if not rooted_at_prediction_time and prediction_time_window_node not in label_window_node.ancestors:
         strio = StringIO()
         with redirect_stdout(strio):
             print_tree(task_cfg.window_tree)
         raise ValueError(
-            "zeroshot_ACES only supports task configs where the prediction time node is an ancestor of the "
-            f"label node. Here, the prediction time window node ({prediction_time_window_node.node_name}) "
-            f"is not an ancestor of the label window node ({label_window_node.node_name}). Got tree:\n"
+            "zeroshot_ACES only supports task configs where the prediction time node is the label node or "
+            f"one of its ancestors. Here, the prediction time window node "
+            f"({prediction_time_window_node.node_name}) is not an ancestor of the label window node "
+            f"({label_window_node.node_name}). Got tree:\n"
             f"{strio.getvalue()}"
         )
 
